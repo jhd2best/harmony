@@ -21,6 +21,7 @@ import (
 	"math"
 	"math/big"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -309,6 +310,8 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig,
 	// Start the event loop and return
 	pool.wg.Add(1)
 	go pool.loop()
+
+	utils.Logger().Info().Msg("AccountSlot: " + strconv.Itoa(int(config.AccountSlots)))
 
 	return pool
 }
