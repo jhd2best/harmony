@@ -1513,6 +1513,10 @@ func (bc *BlockChainImpl) GetMaxGarbageCollectedBlockNumber() int64 {
 }
 
 func (bc *BlockChainImpl) InsertChain(chain types.Blocks, verifyHeaders bool) (int, error) {
+	if bc.shardID == 0 {
+		return len(chain), nil
+	}
+
 	// if in tikv mode, writer node need preempt master or come be a follower
 	if bc.isInitTiKV() && !bc.tikvPreemptMaster(bc.rangeBlock(chain)) {
 		return len(chain), nil
