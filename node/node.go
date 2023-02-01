@@ -190,6 +190,7 @@ func (node *Node) GetOrCreateSyncInstance(initiate bool) ISync {
 
 // Beaconchain returns the beacon chain from node.
 func (node *Node) Beaconchain() core.BlockChain {
+	return nil
 	// tikv mode not have the BeaconChain storage
 	if node.HarmonyConfig != nil && node.HarmonyConfig.General.RunElasticMode && node.HarmonyConfig.General.ShardID != shard.BeaconChainShardID {
 		return nil
