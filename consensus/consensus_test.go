@@ -39,7 +39,7 @@ func TestConsensusInitialization(t *testing.T) {
 	// FBFTLog
 	assert.Equal(t, fbtLog, consensus.FBFTLog)
 
-	assert.Equal(t, FBFTAnnounce, consensus.phase.Get())
+	assert.Equal(t, FBFTAnnounce, consensus.phase)
 
 	// State / consensus.current
 	assert.Equal(t, state.mode, consensus.current.mode)
@@ -61,17 +61,13 @@ func TestConsensusInitialization(t *testing.T) {
 	assert.Equal(t, uint64(0), consensus.GetViewChangingID())
 	assert.Equal(t, uint32(shard.BeaconChainShardID), consensus.ShardID)
 
-	assert.IsType(t, make(chan struct{}), consensus.syncReadyChan)
-	assert.NotNil(t, consensus.syncReadyChan)
-
-	assert.IsType(t, make(chan struct{}), consensus.syncNotReadyChan)
-	assert.NotNil(t, consensus.syncNotReadyChan)
+	assert.Equal(t, false, consensus.start)
 
 	assert.IsType(t, make(chan slash.Record), consensus.SlashChan)
 	assert.NotNil(t, consensus.SlashChan)
 
-	assert.IsType(t, make(chan ProposalType), consensus.ReadySignal)
-	assert.NotNil(t, consensus.ReadySignal)
+	assert.IsType(t, make(chan ProposalType), consensus.GetReadySignal())
+	assert.NotNil(t, consensus.GetReadySignal())
 
 	assert.IsType(t, make(chan [vdfAndSeedSize]byte), consensus.RndChannel)
 	assert.NotNil(t, consensus.RndChannel)

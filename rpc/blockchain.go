@@ -2,12 +2,11 @@ package rpc
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
 	"time"
-
-	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -808,7 +807,10 @@ func (s *PublicBlockchainService) GetProof(
 		return nil, err
 	}
 
-	storageTrie := state.StorageTrie(address)
+	storageTrie, errTr := state.StorageTrie(address)
+	if errTr != nil {
+		return
+	}
 	storageHash := types.EmptyRootHash
 	codeHash := state.GetCodeHash(address)
 	storageProof := make([]StorageResult, len(storageKeys))

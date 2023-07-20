@@ -5,7 +5,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/harmony-one/harmony/common/denominations"
 	harmonyconfig "github.com/harmony-one/harmony/internal/configs/harmony"
 
 	"github.com/spf13/cobra"
@@ -35,11 +37,12 @@ func TestHarmonyFlags(t *testing.T) {
 			expConfig: harmonyconfig.HarmonyConfig{
 				Version: tomlConfigVersion,
 				General: harmonyconfig.GeneralConfig{
-					NodeType:   "validator",
-					NoStaking:  false,
-					ShardID:    -1,
-					IsArchival: false,
-					DataDir:    "./",
+					NodeType:      "validator",
+					NoStaking:     false,
+					ShardID:       -1,
+					IsArchival:    false,
+					DataDir:       "./",
+					TriesInMemory: 128,
 				},
 				Network: harmonyconfig.NetworkConfig{
 					NetworkType: "mainnet",
@@ -65,6 +68,8 @@ func TestHarmonyFlags(t *testing.T) {
 					MaxConnsPerIP:            5,
 					DisablePrivateIPScan:     false,
 					MaxPeers:                 defaultConfig.P2P.MaxPeers,
+					ConnManagerLowWatermark:  defaultConfig.P2P.ConnManagerLowWatermark,
+					ConnManagerHighWatermark: defaultConfig.P2P.ConnManagerHighWatermark,
 					WaitForEachPeerToConnect: false,
 				},
 				HTTP: harmonyconfig.HttpConfig{
@@ -74,6 +79,9 @@ func TestHarmonyFlags(t *testing.T) {
 					AuthPort:       9501,
 					RosettaEnabled: false,
 					RosettaPort:    9700,
+					ReadTimeout:    defaultConfig.HTTP.ReadTimeout,
+					WriteTimeout:   defaultConfig.HTTP.WriteTimeout,
+					IdleTimeout:    defaultConfig.HTTP.IdleTimeout,
 				},
 				RPCOpt: harmonyconfig.RpcOptConfig{
 					DebugEnabled:       false,
@@ -83,6 +91,7 @@ func TestHarmonyFlags(t *testing.T) {
 					RpcFilterFile:      "./.hmy/rpc_filter.txt",
 					RateLimterEnabled:  true,
 					RequestsPerSecond:  1000,
+					EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 				},
 				WS: harmonyconfig.WsConfig{
 					Enabled:  true,
@@ -111,8 +120,13 @@ func TestHarmonyFlags(t *testing.T) {
 					AllowedTxsFile:    "./.hmy/allowedtxs.txt",
 					RosettaFixFile:    "",
 					AccountSlots:      16,
-					GlobalSlots:       5120,
+					GlobalSlots:       4096,
 					LocalAccountsFile: "./.hmy/locals.txt",
+					AccountQueue:      64,
+					GlobalQueue:       5120,
+					Lifetime:          30 * time.Minute,
+					PriceLimit:        100e9,
+					PriceBump:         1,
 				},
 				Pprof: harmonyconfig.PprofConfig{
 					Enabled:            false,
@@ -159,6 +173,15 @@ func TestHarmonyFlags(t *testing.T) {
 					CacheTime:       10,
 					CacheSize:       512,
 				},
+				GPO: harmonyconfig.GasPriceOracleConfig{
+					Blocks:            defaultConfig.GPO.Blocks,
+					Transactions:      defaultConfig.GPO.Transactions,
+					Percentile:        defaultConfig.GPO.Percentile,
+					DefaultPrice:      defaultConfig.GPO.DefaultPrice,
+					MaxPrice:          defaultConfig.GPO.MaxPrice,
+					LowUsageThreshold: defaultConfig.GPO.LowUsageThreshold,
+					BlockGasLimit:     defaultConfig.GPO.BlockGasLimit,
+				},
 			},
 		},
 	}
@@ -184,63 +207,80 @@ func TestGeneralFlags(t *testing.T) {
 		{
 			args: []string{},
 			expConfig: harmonyconfig.GeneralConfig{
-				NodeType:   "validator",
-				NoStaking:  false,
-				ShardID:    -1,
-				IsArchival: false,
-				DataDir:    "./",
+				NodeType:      "validator",
+				NoStaking:     false,
+				ShardID:       -1,
+				IsArchival:    false,
+				DataDir:       "./",
+				TriesInMemory: 128,
 			},
 		},
 		{
 			args: []string{"--run", "explorer", "--run.legacy", "--run.shard=0",
 				"--run.archive=true", "--datadir=./.hmy"},
 			expConfig: harmonyconfig.GeneralConfig{
-				NodeType:   "explorer",
-				NoStaking:  true,
-				ShardID:    0,
-				IsArchival: true,
-				DataDir:    "./.hmy",
+				NodeType:      "explorer",
+				NoStaking:     true,
+				ShardID:       0,
+				IsArchival:    true,
+				DataDir:       "./.hmy",
+				TriesInMemory: 128,
 			},
 		},
 		{
 			args: []string{"--node_type", "explorer", "--staking", "--shard_id", "0",
 				"--is_archival", "--db_dir", "./"},
 			expConfig: harmonyconfig.GeneralConfig{
-				NodeType:   "explorer",
-				NoStaking:  false,
-				ShardID:    0,
-				IsArchival: true,
-				DataDir:    "./",
+				NodeType:      "explorer",
+				NoStaking:     false,
+				ShardID:       0,
+				IsArchival:    true,
+				DataDir:       "./",
+				TriesInMemory: 128,
 			},
 		},
 		{
 			args: []string{"--staking=false", "--is_archival=false"},
 			expConfig: harmonyconfig.GeneralConfig{
-				NodeType:   "validator",
-				NoStaking:  true,
-				ShardID:    -1,
-				IsArchival: false,
-				DataDir:    "./",
+				NodeType:      "validator",
+				NoStaking:     true,
+				ShardID:       -1,
+				IsArchival:    false,
+				DataDir:       "./",
+				TriesInMemory: 128,
 			},
 		},
 		{
 			args: []string{"--run", "explorer", "--run.shard", "0"},
 			expConfig: harmonyconfig.GeneralConfig{
-				NodeType:   "explorer",
-				NoStaking:  false,
-				ShardID:    0,
-				IsArchival: false,
-				DataDir:    "./",
+				NodeType:      "explorer",
+				NoStaking:     false,
+				ShardID:       0,
+				IsArchival:    false,
+				DataDir:       "./",
+				TriesInMemory: 128,
 			},
 		},
 		{
 			args: []string{"--run", "explorer", "--run.shard", "0", "--run.archive=false"},
 			expConfig: harmonyconfig.GeneralConfig{
-				NodeType:   "explorer",
-				NoStaking:  false,
-				ShardID:    0,
-				IsArchival: false,
-				DataDir:    "./",
+				NodeType:      "explorer",
+				NoStaking:     false,
+				ShardID:       0,
+				IsArchival:    false,
+				DataDir:       "./",
+				TriesInMemory: 128,
+			},
+		},
+		{
+			args: []string{"--blockchain.tries_in_memory", "64"},
+			expConfig: harmonyconfig.GeneralConfig{
+				NodeType:      "validator",
+				NoStaking:     false,
+				ShardID:       -1,
+				IsArchival:    false,
+				DataDir:       "./",
+				TriesInMemory: 64,
 			},
 		},
 	}
@@ -374,6 +414,8 @@ func TestP2PFlags(t *testing.T) {
 				MaxConnsPerIP:            10,
 				DisablePrivateIPScan:     false,
 				MaxPeers:                 defaultConfig.P2P.MaxPeers,
+				ConnManagerLowWatermark:  defaultConfig.P2P.ConnManagerLowWatermark,
+				ConnManagerHighWatermark: defaultConfig.P2P.ConnManagerHighWatermark,
 				WaitForEachPeerToConnect: false,
 			},
 		},
@@ -386,6 +428,8 @@ func TestP2PFlags(t *testing.T) {
 				MaxConnsPerIP:            10,
 				DisablePrivateIPScan:     false,
 				MaxPeers:                 defaultConfig.P2P.MaxPeers,
+				ConnManagerLowWatermark:  defaultConfig.P2P.ConnManagerLowWatermark,
+				ConnManagerHighWatermark: defaultConfig.P2P.ConnManagerHighWatermark,
 				WaitForEachPeerToConnect: false,
 			},
 		},
@@ -399,6 +443,8 @@ func TestP2PFlags(t *testing.T) {
 				MaxConnsPerIP:            5,
 				DisablePrivateIPScan:     false,
 				MaxPeers:                 defaultConfig.P2P.MaxPeers,
+				ConnManagerLowWatermark:  defaultConfig.P2P.ConnManagerLowWatermark,
+				ConnManagerHighWatermark: defaultConfig.P2P.ConnManagerHighWatermark,
 				WaitForEachPeerToConnect: false,
 			},
 		},
@@ -412,6 +458,8 @@ func TestP2PFlags(t *testing.T) {
 				MaxConnsPerIP:            nodeconfig.DefaultMaxConnPerIP,
 				DisablePrivateIPScan:     true,
 				MaxPeers:                 defaultConfig.P2P.MaxPeers,
+				ConnManagerLowWatermark:  defaultConfig.P2P.ConnManagerLowWatermark,
+				ConnManagerHighWatermark: defaultConfig.P2P.ConnManagerHighWatermark,
 				WaitForEachPeerToConnect: false,
 			},
 		},
@@ -425,6 +473,38 @@ func TestP2PFlags(t *testing.T) {
 				MaxConnsPerIP:            nodeconfig.DefaultMaxConnPerIP,
 				DisablePrivateIPScan:     defaultConfig.P2P.DisablePrivateIPScan,
 				MaxPeers:                 100,
+				ConnManagerLowWatermark:  defaultConfig.P2P.ConnManagerLowWatermark,
+				ConnManagerHighWatermark: defaultConfig.P2P.ConnManagerHighWatermark,
+				WaitForEachPeerToConnect: false,
+			},
+		},
+		{
+			args: []string{"--p2p.connmgr-low", "100"},
+			expConfig: harmonyconfig.P2pConfig{
+				Port:                     nodeconfig.DefaultP2PPort,
+				IP:                       nodeconfig.DefaultPublicListenIP,
+				KeyFile:                  "./.hmykey",
+				DiscConcurrency:          nodeconfig.DefaultP2PConcurrency,
+				MaxConnsPerIP:            nodeconfig.DefaultMaxConnPerIP,
+				DisablePrivateIPScan:     defaultConfig.P2P.DisablePrivateIPScan,
+				MaxPeers:                 defaultConfig.P2P.MaxPeers,
+				ConnManagerLowWatermark:  100,
+				ConnManagerHighWatermark: defaultConfig.P2P.ConnManagerHighWatermark,
+				WaitForEachPeerToConnect: false,
+			},
+		},
+		{
+			args: []string{"--p2p.connmgr-high", "400"},
+			expConfig: harmonyconfig.P2pConfig{
+				Port:                     nodeconfig.DefaultP2PPort,
+				IP:                       nodeconfig.DefaultPublicListenIP,
+				KeyFile:                  "./.hmykey",
+				DiscConcurrency:          nodeconfig.DefaultP2PConcurrency,
+				MaxConnsPerIP:            nodeconfig.DefaultMaxConnPerIP,
+				DisablePrivateIPScan:     defaultConfig.P2P.DisablePrivateIPScan,
+				MaxPeers:                 defaultConfig.P2P.MaxPeers,
+				ConnManagerLowWatermark:  defaultConfig.P2P.ConnManagerLowWatermark,
+				ConnManagerHighWatermark: 400,
 				WaitForEachPeerToConnect: false,
 			},
 		},
@@ -471,6 +551,9 @@ func TestRPCFlags(t *testing.T) {
 				Port:           defaultConfig.HTTP.Port,
 				AuthPort:       defaultConfig.HTTP.AuthPort,
 				RosettaPort:    defaultConfig.HTTP.RosettaPort,
+				ReadTimeout:    defaultConfig.HTTP.ReadTimeout,
+				WriteTimeout:   defaultConfig.HTTP.WriteTimeout,
+				IdleTimeout:    defaultConfig.HTTP.IdleTimeout,
 			},
 		},
 		{
@@ -482,6 +565,9 @@ func TestRPCFlags(t *testing.T) {
 				Port:           9001,
 				AuthPort:       defaultConfig.HTTP.AuthPort,
 				RosettaPort:    defaultConfig.HTTP.RosettaPort,
+				ReadTimeout:    defaultConfig.HTTP.ReadTimeout,
+				WriteTimeout:   defaultConfig.HTTP.WriteTimeout,
+				IdleTimeout:    defaultConfig.HTTP.IdleTimeout,
 			},
 		},
 		{
@@ -493,6 +579,9 @@ func TestRPCFlags(t *testing.T) {
 				Port:           defaultConfig.HTTP.Port,
 				AuthPort:       9001,
 				RosettaPort:    defaultConfig.HTTP.RosettaPort,
+				ReadTimeout:    defaultConfig.HTTP.ReadTimeout,
+				WriteTimeout:   defaultConfig.HTTP.WriteTimeout,
+				IdleTimeout:    defaultConfig.HTTP.IdleTimeout,
 			},
 		},
 		{
@@ -504,6 +593,9 @@ func TestRPCFlags(t *testing.T) {
 				Port:           9001,
 				AuthPort:       defaultConfig.HTTP.AuthPort,
 				RosettaPort:    10001,
+				ReadTimeout:    defaultConfig.HTTP.ReadTimeout,
+				WriteTimeout:   defaultConfig.HTTP.WriteTimeout,
+				IdleTimeout:    defaultConfig.HTTP.IdleTimeout,
 			},
 		},
 		{
@@ -515,6 +607,9 @@ func TestRPCFlags(t *testing.T) {
 				Port:           defaultConfig.HTTP.Port,
 				AuthPort:       defaultConfig.HTTP.AuthPort,
 				RosettaPort:    10001,
+				ReadTimeout:    defaultConfig.HTTP.ReadTimeout,
+				WriteTimeout:   defaultConfig.HTTP.WriteTimeout,
+				IdleTimeout:    defaultConfig.HTTP.IdleTimeout,
 			},
 		},
 		{
@@ -526,6 +621,23 @@ func TestRPCFlags(t *testing.T) {
 				Port:           9501,
 				AuthPort:       9502,
 				RosettaPort:    9701,
+				ReadTimeout:    defaultConfig.HTTP.ReadTimeout,
+				WriteTimeout:   defaultConfig.HTTP.WriteTimeout,
+				IdleTimeout:    defaultConfig.HTTP.IdleTimeout,
+			},
+		},
+		{
+			args: []string{"--http.timeout.read", "10s", "--http.timeout.write", "20s", "--http.timeout.idle", "30s"},
+			expConfig: harmonyconfig.HttpConfig{
+				Enabled:        true,
+				RosettaEnabled: false,
+				IP:             defaultConfig.HTTP.IP,
+				Port:           defaultConfig.HTTP.Port,
+				AuthPort:       defaultConfig.HTTP.AuthPort,
+				RosettaPort:    defaultConfig.HTTP.RosettaPort,
+				ReadTimeout:    "10s",
+				WriteTimeout:   "20s",
+				IdleTimeout:    "30s",
 			},
 		},
 	}
@@ -639,6 +751,7 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./.hmy/rpc_filter.txt",
 				RateLimterEnabled:  true,
 				RequestsPerSecond:  1000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 			},
 		},
 
@@ -652,6 +765,7 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./.hmy/rpc_filter.txt",
 				RateLimterEnabled:  true,
 				RequestsPerSecond:  1000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 			},
 		},
 
@@ -665,6 +779,7 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./.hmy/rpc_filter.txt",
 				RateLimterEnabled:  true,
 				RequestsPerSecond:  1000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 			},
 		},
 
@@ -678,6 +793,7 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./.hmy/rpc_filter.txt",
 				RateLimterEnabled:  true,
 				RequestsPerSecond:  1000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 			},
 		},
 
@@ -691,6 +807,7 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./rmf.toml",
 				RateLimterEnabled:  true,
 				RequestsPerSecond:  1000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 			},
 		},
 
@@ -704,6 +821,7 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./.hmy/rpc_filter.txt",
 				RateLimterEnabled:  true,
 				RequestsPerSecond:  1000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 			},
 		},
 
@@ -717,6 +835,7 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./.hmy/rpc_filter.txt",
 				RateLimterEnabled:  true,
 				RequestsPerSecond:  2000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
 			},
 		},
 
@@ -730,6 +849,21 @@ func TestRPCOptFlags(t *testing.T) {
 				RpcFilterFile:      "./.hmy/rpc_filter.txt",
 				RateLimterEnabled:  false,
 				RequestsPerSecond:  2000,
+				EvmCallTimeout:     defaultConfig.RPCOpt.EvmCallTimeout,
+			},
+		},
+
+		{
+			args: []string{"--rpc.evm-call-timeout", "10s"},
+			expConfig: harmonyconfig.RpcOptConfig{
+				DebugEnabled:       false,
+				EthRPCsEnabled:     true,
+				StakingRPCsEnabled: true,
+				LegacyRPCsEnabled:  true,
+				RpcFilterFile:      "./.hmy/rpc_filter.txt",
+				RateLimterEnabled:  true,
+				RequestsPerSecond:  1000,
+				EvmCallTimeout:     "10s",
 			},
 		},
 	}
@@ -887,6 +1021,11 @@ func TestTxPoolFlags(t *testing.T) {
 				AccountSlots:      defaultConfig.TxPool.AccountSlots,
 				LocalAccountsFile: defaultConfig.TxPool.LocalAccountsFile,
 				GlobalSlots:       defaultConfig.TxPool.GlobalSlots,
+				AccountQueue:      defaultConfig.TxPool.AccountQueue,
+				GlobalQueue:       defaultConfig.TxPool.GlobalQueue,
+				Lifetime:          defaultConfig.TxPool.Lifetime,
+				PriceLimit:        100e9,
+				PriceBump:         1,
 			},
 		},
 		{
@@ -897,7 +1036,12 @@ func TestTxPoolFlags(t *testing.T) {
 				RosettaFixFile:    "rosettafix.file",
 				AccountSlots:      defaultConfig.TxPool.AccountSlots,
 				GlobalSlots:       defaultConfig.TxPool.GlobalSlots,
+				AccountQueue:      defaultConfig.TxPool.AccountQueue,
+				GlobalQueue:       defaultConfig.TxPool.GlobalQueue,
+				Lifetime:          defaultConfig.TxPool.Lifetime,
 				LocalAccountsFile: defaultConfig.TxPool.LocalAccountsFile,
+				PriceLimit:        100e9,
+				PriceBump:         1,
 			},
 		},
 		{
@@ -908,7 +1052,12 @@ func TestTxPoolFlags(t *testing.T) {
 				AllowedTxsFile:    defaultConfig.TxPool.AllowedTxsFile,
 				AccountSlots:      defaultConfig.TxPool.AccountSlots,
 				GlobalSlots:       defaultConfig.TxPool.GlobalSlots,
+				AccountQueue:      defaultConfig.TxPool.AccountQueue,
+				GlobalQueue:       defaultConfig.TxPool.GlobalQueue,
+				Lifetime:          defaultConfig.TxPool.Lifetime,
 				LocalAccountsFile: defaultConfig.TxPool.LocalAccountsFile,
+				PriceLimit:        100e9,
+				PriceBump:         1,
 			},
 		},
 		{
@@ -920,6 +1069,11 @@ func TestTxPoolFlags(t *testing.T) {
 				RosettaFixFile:    "rosettafix.file",
 				LocalAccountsFile: defaultConfig.TxPool.LocalAccountsFile,
 				GlobalSlots:       defaultConfig.TxPool.GlobalSlots,
+				AccountQueue:      defaultConfig.TxPool.AccountQueue,
+				GlobalQueue:       defaultConfig.TxPool.GlobalQueue,
+				Lifetime:          defaultConfig.TxPool.Lifetime,
+				PriceLimit:        100e9,
+				PriceBump:         1,
 			},
 		},
 		{
@@ -931,6 +1085,11 @@ func TestTxPoolFlags(t *testing.T) {
 				AccountSlots:      defaultConfig.TxPool.AccountSlots,
 				LocalAccountsFile: "locals.txt",
 				GlobalSlots:       defaultConfig.TxPool.GlobalSlots,
+				AccountQueue:      defaultConfig.TxPool.AccountQueue,
+				GlobalQueue:       defaultConfig.TxPool.GlobalQueue,
+				Lifetime:          defaultConfig.TxPool.Lifetime,
+				PriceLimit:        100e9,
+				PriceBump:         1,
 			},
 		},
 		{
@@ -942,6 +1101,27 @@ func TestTxPoolFlags(t *testing.T) {
 				AccountSlots:      defaultConfig.TxPool.AccountSlots,
 				LocalAccountsFile: defaultConfig.TxPool.LocalAccountsFile,
 				GlobalSlots:       10240,
+				AccountQueue:      defaultConfig.TxPool.AccountQueue,
+				GlobalQueue:       defaultConfig.TxPool.GlobalQueue,
+				Lifetime:          defaultConfig.TxPool.Lifetime,
+				PriceLimit:        100e9,
+				PriceBump:         1,
+			},
+		},
+		{
+			args: []string{"--txpool.accountqueue", "128", "--txpool.globalqueue", "10240", "--txpool.lifetime", "15m", "--txpool.pricelimit", "100", "--txpool.pricebump", "2"},
+			expConfig: harmonyconfig.TxPoolConfig{
+				BlacklistFile:     defaultConfig.TxPool.BlacklistFile,
+				AllowedTxsFile:    defaultConfig.TxPool.AllowedTxsFile,
+				RosettaFixFile:    defaultConfig.TxPool.RosettaFixFile,
+				AccountSlots:      defaultConfig.TxPool.AccountSlots,
+				LocalAccountsFile: defaultConfig.TxPool.LocalAccountsFile,
+				GlobalSlots:       defaultConfig.TxPool.GlobalSlots,
+				AccountQueue:      128,
+				GlobalQueue:       10240,
+				Lifetime:          15 * time.Minute,
+				PriceLimit:        100,
+				PriceBump:         2,
 			},
 		},
 	}
@@ -1175,6 +1355,56 @@ func TestSysFlags(t *testing.T) {
 
 		if !reflect.DeepEqual(hc.Sys, test.expConfig) {
 			t.Errorf("Test %v:\n\t%+v\n\t%+v", i, hc.Sys, test.expConfig)
+		}
+		ts.tearDown()
+	}
+}
+
+func TestGPOFlags(t *testing.T) {
+	tests := []struct {
+		args      []string
+		expConfig harmonyconfig.GasPriceOracleConfig
+		expErr    error
+	}{
+		{
+			args: []string{},
+			expConfig: harmonyconfig.GasPriceOracleConfig{
+				Blocks:            defaultConfig.GPO.Blocks,
+				Transactions:      defaultConfig.GPO.Transactions,
+				Percentile:        defaultConfig.GPO.Percentile,
+				DefaultPrice:      defaultConfig.GPO.DefaultPrice,
+				MaxPrice:          defaultConfig.GPO.MaxPrice,
+				LowUsageThreshold: defaultConfig.GPO.LowUsageThreshold,
+				BlockGasLimit:     defaultConfig.GPO.BlockGasLimit,
+			},
+		},
+		{
+			args: []string{"--gpo.blocks", "5", "--gpo.transactions", "1", "--gpo.percentile", "2", "--gpo.defaultprice", "101000000000", "--gpo.maxprice", "400000000000", "--gpo.low-usage-threshold", "60", "--gpo.block-gas-limit", "10000000"},
+			expConfig: harmonyconfig.GasPriceOracleConfig{
+				Blocks:            5,
+				Transactions:      1,
+				Percentile:        2,
+				DefaultPrice:      101 * denominations.Nano,
+				MaxPrice:          400 * denominations.Nano,
+				LowUsageThreshold: 60,
+				BlockGasLimit:     10_000_000,
+			},
+		},
+	}
+
+	for i, test := range tests {
+		ts := newFlagTestSuite(t, gpoFlags, applyGPOFlags)
+		hc, err := ts.run(test.args)
+
+		if assErr := assertError(err, test.expErr); assErr != nil {
+			t.Fatalf("Test %v: %v", i, assErr)
+		}
+		if err != nil || test.expErr != nil {
+			continue
+		}
+
+		if !reflect.DeepEqual(hc.GPO, test.expConfig) {
+			t.Errorf("Test %v:\n\t%+v\n\t%+v", i, hc.GPO, test.expConfig)
 		}
 		ts.tearDown()
 	}

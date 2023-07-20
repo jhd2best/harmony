@@ -57,11 +57,6 @@ func newViewChange() *viewChange {
 	return &vc
 }
 
-// SetVerifyBlock ..
-func (vc *viewChange) SetVerifyBlock(verifyBlock VerifyBlockFunc) {
-	vc.verifyBlock = verifyBlock
-}
-
 // AddViewIDKeyIfNotExist ..
 func (vc *viewChange) AddViewIDKeyIfNotExist(viewID uint64, members multibls.PublicKeys) {
 	if _, ok := vc.bhpSigs[viewID]; !ok {
@@ -87,7 +82,7 @@ func (vc *viewChange) AddViewIDKeyIfNotExist(viewID uint64, members multibls.Pub
 	}
 }
 
-// Reset reset the state for viewchange
+// Reset resets the state for viewChange.
 func (vc *viewChange) Reset() {
 	vc.m1Payload = []byte{}
 	vc.bhpSigs = map[uint64]map[string]*bls_core.Sign{}

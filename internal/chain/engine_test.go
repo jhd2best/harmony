@@ -19,7 +19,7 @@ import (
 	types2 "github.com/harmony-one/harmony/staking/types"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/harmony-one/harmony/core/rawdb"
 	"github.com/harmony-one/harmony/core/state"
 	"github.com/harmony-one/harmony/core/types"
 	"github.com/harmony-one/harmony/internal/params"
@@ -228,7 +228,7 @@ func (maker *shardSlotMaker) makeSlot() shard.Slot {
 
 func makeTestStateDB() *state.DB {
 	db := state.NewDatabase(rawdb.NewMemoryDatabase())
-	sdb, err := state.New(common.Hash{}, db)
+	sdb, err := state.New(common.Hash{}, db, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -275,7 +275,7 @@ func (kp blsKeyPair) Pub() bls.SerializedPublicKey {
 
 func (kp blsKeyPair) Sign(block *types.Block) []byte {
 	chain := &fakeBlockChain{config: *params.LocalnetChainConfig}
-	msg := consensus_sig.ConstructCommitPayload(chain, block.Epoch(), block.Hash(),
+	msg := consensus_sig.ConstructCommitPayload(chain.Config(), block.Epoch(), block.Hash(),
 		block.Number().Uint64(), block.Header().ViewID().Uint64())
 
 	sig := kp.pri.SignHash(msg)

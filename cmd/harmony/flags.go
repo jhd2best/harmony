@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	harmonyconfig "github.com/harmony-one/harmony/internal/configs/harmony"
 
@@ -31,6 +32,7 @@ var (
 		legacyDataDirFlag,
 
 		taraceFlag,
+		triesInMemoryFlag,
 	}
 
 	dnsSyncFlags = []cli.Flag{
@@ -63,6 +65,8 @@ var (
 		p2pDisablePrivateIPScanFlag,
 		maxConnPerIPFlag,
 		maxPeersFlag,
+		connManagerLowWatermarkFlag,
+		connManagerHighWatermarkFlag,
 	}
 
 	httpFlags = []cli.Flag{
@@ -72,6 +76,9 @@ var (
 		httpPortFlag,
 		httpAuthPortFlag,
 		httpRosettaPortFlag,
+		httpReadTimeoutFlag,
+		httpWriteTimeoutFlag,
+		httpIdleTimeoutFlag,
 	}
 
 	wsFlags = []cli.Flag{
@@ -89,6 +96,7 @@ var (
 		rpcFilterFileFlag,
 		rpcRateLimiterEnabledFlag,
 		rpcRateLimitFlag,
+		rpcEvmCallTimeoutFlag,
 	}
 
 	blsFlags = append(newBLSFlags, legacyBLSFlags...)
@@ -132,12 +140,17 @@ var (
 
 	txPoolFlags = []cli.Flag{
 		tpAccountSlotsFlag,
+		tpGlobalSlotsFlag,
+		tpAccountQueueFlag,
+		tpGlobalQueueFlag,
+		tpLifetimeFlag,
 		rosettaFixFileFlag,
 		tpBlacklistFileFlag,
 		legacyTPBlacklistFileFlag,
 		localAccountsFileFlag,
 		allowedTxsFileFlag,
-		tpGlobalSlotsFlag,
+		tpPriceLimitFlag,
+		tpPriceBumpFlag,
 	}
 
 	pprofFlags = []cli.Flag{
@@ -236,6 +249,16 @@ var (
 		cacheSizeFlag,
 	}
 
+	gpoFlags = []cli.Flag{
+		gpoBlocksFlag,
+		gpoTransactionsFlag,
+		gpoPercentileFlag,
+		gpoDefaultPriceFlag,
+		gpoMaxPriceFlag,
+		gpoLowUsageThresholdFlag,
+		gpoBlockGasLimitFlag,
+	}
+
 	metricsFlags = []cli.Flag{
 		metricsETHFlag,
 		metricsExpensiveETHFlag,
@@ -320,6 +343,11 @@ var (
 		Usage:    "indicates if full transaction tracing should be enabled",
 		DefValue: defaultConfig.General.TraceEnable,
 	}
+	triesInMemoryFlag = cli.IntFlag{
+		Name:     "blockchain.tries_in_memory",
+		Usage:    "number of blocks from header stored in disk before exiting",
+		DefValue: defaultConfig.General.TriesInMemory,
+	}
 )
 
 func getRootFlags() []cli.Flag {
@@ -346,6 +374,7 @@ func getRootFlags() []cli.Flag {
 	flags = append(flags, prometheusFlags...)
 	flags = append(flags, syncFlags...)
 	flags = append(flags, shardDataFlags...)
+	flags = append(flags, gpoFlags...)
 	flags = append(flags, metricsFlags...)
 
 	return flags
@@ -396,6 +425,14 @@ func applyGeneralFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) 
 
 	if cli.IsFlagChanged(cmd, isBackupFlag) {
 		config.General.IsBackup = cli.GetBoolFlagValue(cmd, isBackupFlag)
+	}
+
+	if cli.IsFlagChanged(cmd, triesInMemoryFlag) {
+		value := cli.GetIntFlagValue(cmd, triesInMemoryFlag)
+		if value <= 2 {
+			panic("Must provide number greater than 2 for General.TriesInMemory")
+		}
+		config.General.TriesInMemory = value
 	}
 }
 
@@ -579,6 +616,16 @@ var (
 		Usage:    "maximum number of peers allowed, 0 means no limit",
 		DefValue: defaultConfig.P2P.MaxConnsPerIP,
 	}
+	connManagerLowWatermarkFlag = cli.IntFlag{
+		Name:     "p2p.connmgr-low",
+		Usage:    "lowest number of connections that'll be maintained in connection manager. Set both high and low watermarks to zero to disable connection manager",
+		DefValue: defaultConfig.P2P.ConnManagerLowWatermark,
+	}
+	connManagerHighWatermarkFlag = cli.IntFlag{
+		Name:     "p2p.connmgr-high",
+		Usage:    "highest number of connections that'll be maintained in connection manager. Set both high and low watermarks to zero to disable connection manager",
+		DefValue: defaultConfig.P2P.ConnManagerHighWatermark,
+	}
 	waitForEachPeerToConnectFlag = cli.BoolFlag{
 		Name:     "p2p.wait-for-connections",
 		Usage:    "node waits for each single peer to connect and it doesn't add them to peers list after timeout",
@@ -624,6 +671,14 @@ func applyP2PFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
 		config.P2P.WaitForEachPeerToConnect = cli.GetBoolFlagValue(cmd, waitForEachPeerToConnectFlag)
 	}
 
+	if cli.IsFlagChanged(cmd, connManagerLowWatermarkFlag) {
+		config.P2P.ConnManagerLowWatermark = cli.GetIntFlagValue(cmd, connManagerLowWatermarkFlag)
+	}
+
+	if cli.IsFlagChanged(cmd, connManagerHighWatermarkFlag) {
+		config.P2P.ConnManagerHighWatermark = cli.GetIntFlagValue(cmd, connManagerHighWatermarkFlag)
+	}
+
 	if cli.IsFlagChanged(cmd, p2pDisablePrivateIPScanFlag) {
 		config.P2P.DisablePrivateIPScan = cli.GetBoolFlagValue(cmd, p2pDisablePrivateIPScanFlag)
 	}
@@ -661,6 +716,21 @@ var (
 		Usage:    "rosetta port to listen for HTTP requests",
 		DefValue: defaultConfig.HTTP.RosettaPort,
 	}
+	httpReadTimeoutFlag = cli.StringFlag{
+		Name:     "http.timeout.read",
+		Usage:    "maximum duration to read the entire request, including the body",
+		DefValue: defaultConfig.HTTP.ReadTimeout,
+	}
+	httpWriteTimeoutFlag = cli.StringFlag{
+		Name:     "http.timeout.write",
+		Usage:    "maximum duration before timing out writes of the response",
+		DefValue: defaultConfig.HTTP.WriteTimeout,
+	}
+	httpIdleTimeoutFlag = cli.StringFlag{
+		Name:     "http.timeout.idle",
+		Usage:    "maximum amount of time to wait for the next request when keep-alives are enabled",
+		DefValue: defaultConfig.HTTP.IdleTimeout,
+	}
 )
 
 func applyHTTPFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
@@ -696,6 +766,16 @@ func applyHTTPFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
 		config.HTTP.Enabled = cli.GetBoolFlagValue(cmd, httpEnabledFlag)
 	} else if isRPCSpecified {
 		config.HTTP.Enabled = true
+	}
+
+	if cli.IsFlagChanged(cmd, httpReadTimeoutFlag) {
+		config.HTTP.ReadTimeout = cli.GetStringFlagValue(cmd, httpReadTimeoutFlag)
+	}
+	if cli.IsFlagChanged(cmd, httpWriteTimeoutFlag) {
+		config.HTTP.WriteTimeout = cli.GetStringFlagValue(cmd, httpWriteTimeoutFlag)
+	}
+	if cli.IsFlagChanged(cmd, httpIdleTimeoutFlag) {
+		config.HTTP.IdleTimeout = cli.GetStringFlagValue(cmd, httpIdleTimeoutFlag)
 	}
 
 }
@@ -787,6 +867,12 @@ var (
 		Usage:    "the number of requests per second for RPCs",
 		DefValue: defaultConfig.RPCOpt.RequestsPerSecond,
 	}
+
+	rpcEvmCallTimeoutFlag = cli.StringFlag{
+		Name:     "rpc.evm-call-timeout",
+		Usage:    "timeout for evm execution (eth_call); 0 means infinite timeout",
+		DefValue: defaultConfig.RPCOpt.EvmCallTimeout,
+	}
 )
 
 func applyRPCOptFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
@@ -811,7 +897,9 @@ func applyRPCOptFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
 	if cli.IsFlagChanged(cmd, rpcRateLimitFlag) {
 		config.RPCOpt.RequestsPerSecond = cli.GetIntFlagValue(cmd, rpcRateLimitFlag)
 	}
-
+	if cli.IsFlagChanged(cmd, rpcEvmCallTimeoutFlag) {
+		config.RPCOpt.EvmCallTimeout = cli.GetStringFlagValue(cmd, rpcEvmCallTimeoutFlag)
+	}
 }
 
 // bls flags
@@ -1115,6 +1203,31 @@ var (
 		Usage:    "maximum global number of non-executable transactions in the pool",
 		DefValue: int(defaultConfig.TxPool.GlobalSlots),
 	}
+	tpAccountQueueFlag = cli.IntFlag{
+		Name:     "txpool.accountqueue",
+		Usage:    "capacity of queued transactions for account in the pool",
+		DefValue: int(defaultConfig.TxPool.AccountQueue),
+	}
+	tpGlobalQueueFlag = cli.IntFlag{
+		Name:     "txpool.globalqueue",
+		Usage:    "global capacity for queued transactions in the pool",
+		DefValue: int(defaultConfig.TxPool.GlobalQueue),
+	}
+	tpLifetimeFlag = cli.StringFlag{
+		Name:     "txpool.lifetime",
+		Usage:    "maximum lifetime of transactions in the pool as a golang duration string",
+		DefValue: defaultConfig.TxPool.Lifetime.String(),
+	}
+	tpPriceLimitFlag = cli.IntFlag{
+		Name:     "txpool.pricelimit",
+		Usage:    "minimum gas price to enforce for acceptance into the pool",
+		DefValue: int(defaultConfig.TxPool.PriceLimit),
+	}
+	tpPriceBumpFlag = cli.IntFlag{
+		Name:     "txpool.pricebump",
+		Usage:    "minimum price bump to replace an already existing transaction (nonce)",
+		DefValue: int(defaultConfig.TxPool.PriceLimit),
+	}
 )
 
 func applyTxPoolFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
@@ -1135,6 +1248,20 @@ func applyTxPoolFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
 		}
 		config.TxPool.GlobalSlots = uint64(value)
 	}
+	if cli.IsFlagChanged(cmd, tpAccountQueueFlag) {
+		value := cli.GetIntFlagValue(cmd, tpAccountQueueFlag)
+		if value <= 0 {
+			panic("Must provide positive value for txpool.accountqueue")
+		}
+		config.TxPool.AccountQueue = uint64(value)
+	}
+	if cli.IsFlagChanged(cmd, tpGlobalQueueFlag) {
+		value := cli.GetIntFlagValue(cmd, tpGlobalQueueFlag)
+		if value <= 0 {
+			panic("Must provide positive value for txpool.globalqueue")
+		}
+		config.TxPool.GlobalQueue = uint64(value)
+	}
 	if cli.IsFlagChanged(cmd, tpBlacklistFileFlag) {
 		config.TxPool.BlacklistFile = cli.GetStringFlagValue(cmd, tpBlacklistFileFlag)
 	} else if cli.IsFlagChanged(cmd, legacyTPBlacklistFileFlag) {
@@ -1145,6 +1272,27 @@ func applyTxPoolFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
 	}
 	if cli.IsFlagChanged(cmd, allowedTxsFileFlag) {
 		config.TxPool.AllowedTxsFile = cli.GetStringFlagValue(cmd, allowedTxsFileFlag)
+	}
+	if cli.IsFlagChanged(cmd, tpLifetimeFlag) {
+		value, err := time.ParseDuration(cli.GetStringFlagValue(cmd, tpLifetimeFlag))
+		if err != nil {
+			panic(fmt.Sprintf("Invalid value for txpool.lifetime: %v", err))
+		}
+		config.TxPool.Lifetime = value
+	}
+	if cli.IsFlagChanged(cmd, tpPriceLimitFlag) {
+		value := cli.GetIntFlagValue(cmd, tpPriceLimitFlag)
+		if value <= 0 {
+			panic("Must provide positive value for txpool.pricelimit")
+		}
+		config.TxPool.PriceLimit = harmonyconfig.PriceLimit(value)
+	}
+	if cli.IsFlagChanged(cmd, tpPriceBumpFlag) {
+		value := cli.GetIntFlagValue(cmd, tpPriceBumpFlag)
+		if value <= 0 {
+			panic("Must provide positive value for txpool.pricebump")
+		}
+		config.TxPool.PriceBump = uint64(value)
 	}
 }
 
@@ -1692,6 +1840,11 @@ var (
 		Usage:  "Initial shard-wise number of peers to start syncing",
 		Hidden: true,
 	}
+	syncMaxAdvertiseWaitTimeFlag = cli.IntFlag{
+		Name:   "sync.max-advertise-wait-time",
+		Usage:  "The max time duration between two advertises for each p2p peer to tell other nodes what protocols it supports",
+		Hidden: true,
+	}
 	syncDiscSoftLowFlag = cli.IntFlag{
 		Name:   "sync.disc.soft-low-cap",
 		Usage:  "Soft low cap for sync stream management",
@@ -1740,6 +1893,10 @@ func applySyncFlags(cmd *cobra.Command, config *harmonyconfig.HarmonyConfig) {
 		config.Sync.InitStreams = cli.GetIntFlagValue(cmd, syncInitStreamsFlag)
 	}
 
+	if cli.IsFlagChanged(cmd, syncMaxAdvertiseWaitTimeFlag) {
+		config.Sync.MaxAdvertiseWaitTime = cli.GetIntFlagValue(cmd, syncMaxAdvertiseWaitTimeFlag)
+	}
+
 	if cli.IsFlagChanged(cmd, syncDiscSoftLowFlag) {
 		config.Sync.DiscSoftLowCap = cli.GetIntFlagValue(cmd, syncDiscSoftLowFlag)
 	}
@@ -1786,6 +1943,45 @@ var (
 	}
 )
 
+// gas price oracle flags
+var (
+	gpoBlocksFlag = cli.IntFlag{
+		Name:     "gpo.blocks",
+		Usage:    "Number of recent blocks to check for gas prices",
+		DefValue: defaultConfig.GPO.Blocks,
+	}
+	gpoTransactionsFlag = cli.IntFlag{
+		Name:     "gpo.transactions",
+		Usage:    "Number of transactions to sample in a block",
+		DefValue: defaultConfig.GPO.Transactions,
+	}
+	gpoPercentileFlag = cli.IntFlag{
+		Name:     "gpo.percentile",
+		Usage:    "Suggested gas price is the given percentile of a set of recent transaction gas prices",
+		DefValue: defaultConfig.GPO.Percentile,
+	}
+	gpoDefaultPriceFlag = cli.Int64Flag{
+		Name:     "gpo.defaultprice",
+		Usage:    "The gas price to suggest before data is available, and the price to suggest when block utilization is low",
+		DefValue: defaultConfig.GPO.DefaultPrice,
+	}
+	gpoMaxPriceFlag = cli.Int64Flag{
+		Name:     "gpo.maxprice",
+		Usage:    "Maximum gasprice to be recommended by gpo",
+		DefValue: defaultConfig.GPO.MaxPrice,
+	}
+	gpoLowUsageThresholdFlag = cli.IntFlag{
+		Name:     "gpo.low-usage-threshold",
+		Usage:    "The block usage threshold below which the default gas price is suggested (0 to disable)",
+		DefValue: defaultConfig.GPO.LowUsageThreshold,
+	}
+	gpoBlockGasLimitFlag = cli.IntFlag{
+		Name:     "gpo.block-gas-limit",
+		Usage:    "The gas limit, per block. If set to 0, it is pulled from the block header",
+		DefValue: defaultConfig.GPO.BlockGasLimit,
+	}
+)
+
 // metrics flags required for the go-eth library
 // https://github.com/ethereum/go-ethereum/blob/master/metrics/metrics.go#L35-L55
 var (
@@ -1817,5 +2013,29 @@ func applyShardDataFlags(cmd *cobra.Command, cfg *harmonyconfig.HarmonyConfig) {
 	}
 	if cli.IsFlagChanged(cmd, cacheSizeFlag) {
 		cfg.ShardData.CacheSize = cli.GetIntFlagValue(cmd, cacheSizeFlag)
+	}
+}
+
+func applyGPOFlags(cmd *cobra.Command, cfg *harmonyconfig.HarmonyConfig) {
+	if cli.IsFlagChanged(cmd, gpoBlocksFlag) {
+		cfg.GPO.Blocks = cli.GetIntFlagValue(cmd, gpoBlocksFlag)
+	}
+	if cli.IsFlagChanged(cmd, gpoTransactionsFlag) {
+		cfg.GPO.Transactions = cli.GetIntFlagValue(cmd, gpoTransactionsFlag)
+	}
+	if cli.IsFlagChanged(cmd, gpoPercentileFlag) {
+		cfg.GPO.Percentile = cli.GetIntFlagValue(cmd, gpoPercentileFlag)
+	}
+	if cli.IsFlagChanged(cmd, gpoDefaultPriceFlag) {
+		cfg.GPO.DefaultPrice = cli.GetInt64FlagValue(cmd, gpoDefaultPriceFlag)
+	}
+	if cli.IsFlagChanged(cmd, gpoMaxPriceFlag) {
+		cfg.GPO.MaxPrice = cli.GetInt64FlagValue(cmd, gpoMaxPriceFlag)
+	}
+	if cli.IsFlagChanged(cmd, gpoLowUsageThresholdFlag) {
+		cfg.GPO.LowUsageThreshold = cli.GetIntFlagValue(cmd, gpoLowUsageThresholdFlag)
+	}
+	if cli.IsFlagChanged(cmd, gpoBlockGasLimitFlag) {
+		cfg.GPO.BlockGasLimit = cli.GetIntFlagValue(cmd, gpoBlockGasLimitFlag)
 	}
 }

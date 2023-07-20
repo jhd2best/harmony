@@ -13,6 +13,7 @@ import (
 	"github.com/harmony-one/harmony/core/state"
 	"github.com/harmony-one/harmony/core/types"
 	"github.com/harmony-one/harmony/core/vm"
+	"github.com/harmony-one/harmony/crypto/bls"
 	harmonyconfig "github.com/harmony-one/harmony/internal/configs/harmony"
 	"github.com/harmony-one/harmony/internal/params"
 	"github.com/harmony-one/harmony/internal/tikv/redis_helper"
@@ -288,7 +289,7 @@ func (a Stub) ReadCXReceipts(shardID uint32, blockNum uint64, blockHash common.H
 	return nil, errors.Errorf("method ReadCXReceipts not implemented for %s", a.Name)
 }
 
-func (a Stub) CXMerkleProof(toShardID uint32, block *types.Block) (*types.CXMerkleProof, error) {
+func (a Stub) CXMerkleProof(toShardID uint32, block *block.Header) (*types.CXMerkleProof, error) {
 	return nil, errors.Errorf("method CXMerkleProof not implemented for %s", a.Name)
 }
 
@@ -403,6 +404,10 @@ func (a Stub) CommitOffChainData(batch rawdb.DatabaseWriter, block *types.Block,
 	return 0, errors.Errorf("method CommitOffChainData not implemented for %s", a.Name)
 }
 
+func (a Stub) GetLeaderPubKeyFromCoinbase(h *block.Header) (*bls.PublicKeyWrapper, error) {
+	return nil, errors.Errorf("method GetLeaderPubKeyFromCoinbase not implemented for %s", a.Name)
+}
+
 func (a Stub) IsTikvWriterMaster() bool {
 	return false
 }
@@ -417,4 +422,8 @@ func (a Stub) SyncFromTiKVWriter(newBlkNum uint64, logs []*types.Log) error {
 
 func (a Stub) InitTiKV(conf *harmonyconfig.TiKVConfig) {
 	return
+}
+
+func (a Stub) LeaderRotationMeta() (publicKeyBytes []byte, epoch, count, shifts uint64, err error) {
+	return nil, 0, 0, 0, errors.Errorf("method LeaderRotationMeta not implemented for %s", a.Name)
 }

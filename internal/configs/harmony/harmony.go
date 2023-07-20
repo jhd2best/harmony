@@ -1,8 +1,13 @@
 package harmony
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
+	"time"
+
+	nodeconfig "github.com/harmony-one/harmony/internal/configs/node"
+	"github.com/harmony-one/harmony/internal/utils"
 )
 
 // HarmonyConfig contains all the configs user can set for running harmony binary. Served as the bridge
@@ -30,6 +35,63 @@ type HarmonyConfig struct {
 	TiKV       *TiKVConfig       `toml:",omitempty"`
 	DNSSync    DnsSync
 	ShardData  ShardDataConfig
+	GPO        GasPriceOracleConfig
+}
+
+func (hc HarmonyConfig) ToRPCServerConfig() nodeconfig.RPCServerConfig {
+	readTimeout, err := time.ParseDuration(hc.HTTP.ReadTimeout)
+	if err != nil {
+		readTimeout, _ = time.ParseDuration(nodeconfig.DefaultHTTPTimeoutRead)
+		utils.Logger().Warn().
+			Str("provided", hc.HTTP.ReadTimeout).
+			Dur("updated", readTimeout).
+			Msg("Sanitizing invalid http read timeout")
+	}
+	writeTimeout, err := time.ParseDuration(hc.HTTP.WriteTimeout)
+	if err != nil {
+		writeTimeout, _ = time.ParseDuration(nodeconfig.DefaultHTTPTimeoutWrite)
+		utils.Logger().Warn().
+			Str("provided", hc.HTTP.WriteTimeout).
+			Dur("updated", writeTimeout).
+			Msg("Sanitizing invalid http write timeout")
+	}
+	idleTimeout, err := time.ParseDuration(hc.HTTP.IdleTimeout)
+	if err != nil {
+		idleTimeout, _ = time.ParseDuration(nodeconfig.DefaultHTTPTimeoutIdle)
+		utils.Logger().Warn().
+			Str("provided", hc.HTTP.IdleTimeout).
+			Dur("updated", idleTimeout).
+			Msg("Sanitizing invalid http idle timeout")
+	}
+	evmCallTimeout, err := time.ParseDuration(hc.RPCOpt.EvmCallTimeout)
+	if err != nil {
+		evmCallTimeout, _ = time.ParseDuration(nodeconfig.DefaultEvmCallTimeout)
+		utils.Logger().Warn().
+			Str("provided", hc.RPCOpt.EvmCallTimeout).
+			Dur("updated", evmCallTimeout).
+			Msg("Sanitizing invalid evm_call timeout")
+	}
+	return nodeconfig.RPCServerConfig{
+		HTTPEnabled:        hc.HTTP.Enabled,
+		HTTPIp:             hc.HTTP.IP,
+		HTTPPort:           hc.HTTP.Port,
+		HTTPAuthPort:       hc.HTTP.AuthPort,
+		HTTPTimeoutRead:    readTimeout,
+		HTTPTimeoutWrite:   writeTimeout,
+		HTTPTimeoutIdle:    idleTimeout,
+		WSEnabled:          hc.WS.Enabled,
+		WSIp:               hc.WS.IP,
+		WSPort:             hc.WS.Port,
+		WSAuthPort:         hc.WS.AuthPort,
+		DebugEnabled:       hc.RPCOpt.DebugEnabled,
+		EthRPCsEnabled:     hc.RPCOpt.EthRPCsEnabled,
+		StakingRPCsEnabled: hc.RPCOpt.StakingRPCsEnabled,
+		LegacyRPCsEnabled:  hc.RPCOpt.LegacyRPCsEnabled,
+		RpcFilterFile:      hc.RPCOpt.RpcFilterFile,
+		RateLimiterEnabled: hc.RPCOpt.RateLimterEnabled,
+		RequestsPerSecond:  hc.RPCOpt.RequestsPerSecond,
+		EvmCallTimeout:     evmCallTimeout,
+	}
 }
 
 type DnsSync struct {
@@ -46,14 +108,19 @@ type NetworkConfig struct {
 }
 
 type P2pConfig struct {
-	Port                     int
-	IP                       string
-	KeyFile                  string
-	DHTDataStore             *string `toml:",omitempty"`
-	DiscConcurrency          int     // Discovery Concurrency value
-	MaxConnsPerIP            int
-	DisablePrivateIPScan     bool
-	MaxPeers                 int64
+	Port                 int
+	IP                   string
+	KeyFile              string
+	DHTDataStore         *string `toml:",omitempty"`
+	DiscConcurrency      int     // Discovery Concurrency value
+	MaxConnsPerIP        int
+	DisablePrivateIPScan bool
+	MaxPeers             int64
+	// In order to disable Connection Manager, it only needs to
+	// set both the high and low watermarks to zero. In this way,
+	// using Connection Manager will be an optional feature.
+	ConnManagerLowWatermark  int
+	ConnManagerHighWatermark int
 	WaitForEachPeerToConnect bool
 }
 
@@ -69,6 +136,7 @@ type GeneralConfig struct {
 	TraceEnable            bool
 	EnablePruneBeaconChain bool
 	RunElasticMode         bool
+	TriesInMemory          int
 }
 
 type TiKVConfig struct {
@@ -88,6 +156,25 @@ type ShardDataConfig struct {
 	ShardCount      int
 	CacheTime       int
 	CacheSize       int
+}
+
+type GasPriceOracleConfig struct {
+	// the number of blocks to sample
+	Blocks int
+	// the number of transactions to sample, per block
+	Transactions int
+	// the percentile to pick from there
+	Percentile int
+	// the default gas price, if the above data is not available
+	DefaultPrice int64
+	// the maximum suggested gas price
+	MaxPrice int64
+	// when block usage (gas) for last `Blocks` blocks is below `LowUsageThreshold`,
+	// we return the Default price
+	LowUsageThreshold int
+	// hack: our block header reports an 80m gas limit, but it is actually 30M.
+	// if set to non-zero, this is applied UNCHECKED
+	BlockGasLimit int
 }
 
 type ConsensusConfig struct {
@@ -115,8 +202,13 @@ type TxPoolConfig struct {
 	AllowedTxsFile    string
 	RosettaFixFile    string
 	AccountSlots      uint64
+	AccountQueue      uint64
+	GlobalQueue       uint64
 	LocalAccountsFile string
 	GlobalSlots       uint64
+	Lifetime          time.Duration
+	PriceLimit        PriceLimit
+	PriceBump         uint64
 }
 
 type PprofConfig struct {
@@ -174,6 +266,9 @@ type HttpConfig struct {
 	AuthPort       int
 	RosettaEnabled bool
 	RosettaPort    int
+	ReadTimeout    string
+	WriteTimeout   string
+	IdleTimeout    string
 }
 
 type WsConfig struct {
@@ -191,6 +286,7 @@ type RpcOptConfig struct {
 	RpcFilterFile      string // Define filters to enable/disable RPC exposure
 	RateLimterEnabled  bool   // Enable Rate limiter for RPC
 	RequestsPerSecond  int    // for RPC rate limiter
+	EvmCallTimeout     string // Timeout for eth_call
 }
 
 type DevnetConfig struct {
@@ -222,17 +318,18 @@ type PrometheusConfig struct {
 
 type SyncConfig struct {
 	// TODO: Remove this bool after stream sync is fully up.
-	Enabled        bool             // enable the stream sync protocol
-	Downloader     bool             // start the sync downloader client
-	StagedSync     bool             // use staged sync
-	StagedSyncCfg  StagedSyncConfig // staged sync configurations
-	Concurrency    int              // concurrency used for stream sync protocol
-	MinPeers       int              // minimum streams to start a sync task.
-	InitStreams    int              // minimum streams in bootstrap to start sync loop.
-	DiscSoftLowCap int              // when number of streams is below this value, spin discover during check
-	DiscHardLowCap int              // when removing stream, num is below this value, spin discovery immediately
-	DiscHighCap    int              // upper limit of streams in one sync protocol
-	DiscBatch      int              // size of each discovery
+	Enabled              bool             // enable the stream sync protocol
+	Downloader           bool             // start the sync downloader client
+	StagedSync           bool             // use staged sync
+	StagedSyncCfg        StagedSyncConfig // staged sync configurations
+	Concurrency          int              // concurrency used for stream sync protocol
+	MinPeers             int              // minimum streams to start a sync task.
+	InitStreams          int              // minimum streams in bootstrap to start sync loop.
+	MaxAdvertiseWaitTime int              // maximum time duration between advertisements
+	DiscSoftLowCap       int              // when number of streams is below this value, spin discover during check
+	DiscHardLowCap       int              // when removing stream, num is below this value, spin discovery immediately
+	DiscHighCap          int              // upper limit of streams in one sync protocol
+	DiscBatch            int              // size of each discovery
 }
 
 type StagedSyncConfig struct {
@@ -246,4 +343,27 @@ type StagedSyncConfig struct {
 	VerifyHeaderBatchSize  uint64 // batch size to verify header before insert to chain
 	UseMemDB               bool   // it uses memory by default. set it to false to use disk
 	LogProgress            bool   // log the full sync progress in console
+}
+
+type PriceLimit int64
+
+func (s *PriceLimit) UnmarshalTOML(data interface{}) error {
+	switch v := data.(type) {
+	case float64:
+		*s = PriceLimit(v)
+	case int64:
+		*s = PriceLimit(v)
+	case PriceLimit:
+		*s = v
+	default:
+		return fmt.Errorf("PriceLimit.UnmarshalTOML: %T", data)
+	}
+	return nil
+}
+
+func (s PriceLimit) MarshalTOML() ([]byte, error) {
+	if s > 1_000_000_000 {
+		return []byte(fmt.Sprintf("%de9", s/1_000_000_000)), nil
+	}
+	return []byte(fmt.Sprintf("%d", s)), nil
 }

@@ -1,7 +1,7 @@
 ARG GOPATH_DEFAULT=/root/go
 ARG SRC_PATH=src/github.com/harmony-one
 
-FROM golang:1.18-bullseye as builder
+FROM golang:1.19-bullseye as builder
 
 ARG GOPATH_DEFAULT
 ARG SRC_PATH
@@ -39,7 +39,7 @@ ARG HARMONY_USER_GID=1000
 ENV HARMONY_HOME=/harmony
 ENV HOME=${HARMONY_HOME}
 
-RUN apk add --no-cache bash~=5.1.16-r2 bind-tools~=9.16.37-r0 tini~=0.19.0 curl==7.83.1-r5 sed~=4.8-r0 \
+RUN apk add --no-cache bash bind-tools tini curl sed \
     && rm -rf /var/cache/apk/* \
     && addgroup -g ${HARMONY_USER_GID} ${HARMONY_USER} \
     && adduser -u ${HARMONY_USER_UID} -G ${HARMONY_USER} --shell /sbin/nologin --no-create-home -D ${HARMONY_USER} \

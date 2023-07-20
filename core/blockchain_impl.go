@@ -39,14 +39,18 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
+	bls2 "github.com/harmony-one/bls/ffi/go/bls"
 	"github.com/harmony-one/harmony/block"
 	consensus_engine "github.com/harmony-one/harmony/consensus/engine"
 	"github.com/harmony-one/harmony/consensus/reward"
 	"github.com/harmony-one/harmony/consensus/votepower"
 	"github.com/harmony-one/harmony/core/rawdb"
 	"github.com/harmony-one/harmony/core/state"
+	"github.com/harmony-one/harmony/core/state/snapshot"
 	"github.com/harmony-one/harmony/core/types"
 	"github.com/harmony-one/harmony/core/vm"
+	"github.com/harmony-one/harmony/crypto/bls"
 	harmonyconfig "github.com/harmony-one/harmony/internal/configs/harmony"
 	"github.com/harmony-one/harmony/internal/params"
 	"github.com/harmony-one/harmony/internal/tikv"
@@ -101,7 +105,6 @@ const (
 	maxFutureBlocks                    = 16
 	maxTimeFutureBlocks                = 30
 	badBlockLimit                      = 10
-	triesInMemory                      = 128
 	triesInRedis                       = 1000
 	shardCacheLimit                    = 10
 	commitsCacheLimit                  = 10
@@ -113,6 +116,7 @@ const (
 	validatorListByDelegatorCacheLimit = 128
 	pendingCrossLinksCacheLimit        = 2
 	blockAccumulatorCacheLimit         = 64
+	leaderPubKeyFromCoinbaseLimit      = 8
 	maxPendingSlashes                  = 256
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	BlockChainVersion = 3
@@ -122,9 +126,29 @@ const (
 // CacheConfig contains the configuration values for the trie caching/pruning
 // that's resident in a blockchain.
 type CacheConfig struct {
-	Disabled      bool          // Whether to disable trie write caching (archive node)
-	TrieNodeLimit int           // Memory limit (MB) at which to flush the current in-memory trie to disk
-	TrieTimeLimit time.Duration // Time limit after which to flush the current in-memory trie to disk
+	Disabled          bool          // Whether to disable trie write caching (archive node)
+	TrieNodeLimit     int           // Memory limit (MB) at which to flush the current in-memory trie to disk
+	TrieTimeLimit     time.Duration // Time limit after which to flush the current in-memory trie to disk
+	TriesInMemory     uint64        // Block number from the head stored in disk before exiting
+	TrieDirtyLimit    int           // Memory limit (MB) at which to start flushing dirty trie nodes to disk
+	TrieDirtyDisabled bool          // Whether to disable trie write caching and GC altogether (archive node)
+	TrieCleanLimit    int           // Memory allowance (MB) to use for caching trie nodes in memory
+	TrieCleanJournal  string        // Disk journal for saving clean cache entries.
+	Preimages         bool          // Whether to store preimage of trie key to the disk
+	SnapshotLimit     int           // Memory allowance (MB) to use for caching snapshot entries in memory
+	SnapshotNoBuild   bool          // Whether the background generation is allowed
+	SnapshotWait      bool          // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+}
+
+// defaultCacheConfig are the default caching values if none are specified by the
+// user (also used during testing).
+var defaultCacheConfig = &CacheConfig{
+	Disabled:       false,
+	TrieCleanLimit: 256,
+	TrieDirtyLimit: 256,
+	TrieTimeLimit:  5 * time.Minute,
+	SnapshotLimit:  256,
+	SnapshotWait:   true,
 }
 
 type BlockChainImpl struct {
@@ -133,9 +157,11 @@ type BlockChainImpl struct {
 	pruneBeaconChainEnable bool                // pruneBeaconChainEnable is enable prune BeaconChain feature
 	shardID                uint32              // Shard number
 
-	db     ethdb.Database // Low level persistent database to store final content in
-	triegc *prque.Prque   // Priority queue mapping block numbers to tries to gc
-	gcproc time.Duration  // Accumulates canonical block processing for trie dumping
+	db     ethdb.Database                   // Low level persistent database to store final content in
+	snaps  *snapshot.Tree                   // Snapshot tree for fast trie leaf access
+	triegc *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
+	gcproc time.Duration                    // Accumulates canonical block processing for trie dumping
+	triedb *trie.Database                   // The database handler for maintaining trie nodes.
 
 	// The following two variables are used to clean up the cache of redis in tikv mode.
 	// This can improve the cache hit rate of redis
@@ -181,6 +207,7 @@ type BlockChainImpl struct {
 	validatorListByDelegatorCache *lru.Cache        // Cache of validator list by delegator
 	pendingCrossLinksCache        *lru.Cache        // Cache of last pending crosslinks
 	blockAccumulatorCache         *lru.Cache        // Cache of block accumulators
+	leaderPubKeyFromCoinbase      *lru.Cache        // Cache of leader public key from coinbase
 	quit                          chan struct{}     // blockchain quit channel
 	running                       int32             // running must be called atomically
 	blockchainPruner              *blockchainPruner // use to prune beacon chain
@@ -220,12 +247,22 @@ func newBlockChainWithOptions(
 	db ethdb.Database, stateCache state.Database, beaconChain BlockChain,
 	cacheConfig *CacheConfig, chainConfig *params.ChainConfig,
 	engine consensus_engine.Engine, vmConfig vm.Config, options Options) (*BlockChainImpl, error) {
+
 	if cacheConfig == nil {
-		cacheConfig = &CacheConfig{
-			TrieNodeLimit: 256 * 1024 * 1024,
-			TrieTimeLimit: 2 * time.Minute,
-		}
+		cacheConfig = defaultCacheConfig
 	}
+
+	// Open trie database with provided config
+	triedb := trie.NewDatabaseWithConfig(db, &trie.Config{
+		Cache:     cacheConfig.TrieCleanLimit,
+		Journal:   cacheConfig.TrieCleanJournal,
+		Preimages: cacheConfig.Preimages,
+	})
+
+	if stateCache == nil {
+		stateCache = state.NewDatabaseWithNodeDB(db, triedb)
+	}
+
 	bodyCache, _ := lru.New(bodyCacheLimit)
 	bodyRLPCache, _ := lru.New(bodyCacheLimit)
 	receiptsCache, _ := lru.New(receiptsCacheLimit)
@@ -242,12 +279,14 @@ func newBlockChainWithOptions(
 	validatorListByDelegatorCache, _ := lru.New(validatorListByDelegatorCacheLimit)
 	pendingCrossLinksCache, _ := lru.New(pendingCrossLinksCacheLimit)
 	blockAccumulatorCache, _ := lru.New(blockAccumulatorCacheLimit)
+	leaderPubKeyFromCoinbase, _ := lru.New(leaderPubKeyFromCoinbaseLimit)
 
 	bc := &BlockChainImpl{
 		chainConfig:                   chainConfig,
 		cacheConfig:                   cacheConfig,
 		db:                            db,
-		triegc:                        prque.New(nil),
+		triegc:                        prque.New[int64, common.Hash](nil),
+		triedb:                        triedb,
 		stateCache:                    stateCache,
 		quit:                          make(chan struct{}),
 		bodyCache:                     bodyCache,
@@ -265,6 +304,7 @@ func newBlockChainWithOptions(
 		validatorListByDelegatorCache: validatorListByDelegatorCache,
 		pendingCrossLinksCache:        pendingCrossLinksCache,
 		blockAccumulatorCache:         blockAccumulatorCache,
+		leaderPubKeyFromCoinbase:      leaderPubKeyFromCoinbase,
 		blockchainPruner:              newBlockchainPruner(db),
 		engine:                        engine,
 		vmConfig:                      vmConfig,
@@ -296,6 +336,28 @@ func newBlockChainWithOptions(
 
 	bc.SetValidator(NewBlockValidator(chainConfig, bc, engine))
 	bc.SetProcessor(NewStateProcessor(chainConfig, bc, beaconChain, engine))
+
+	// Load any existing snapshot, regenerating it if loading failed
+	if bc.cacheConfig.SnapshotLimit > 0 {
+		// If the chain was rewound past the snapshot persistent layer (causing
+		// a recovery block number to be persisted to disk), check if we're still
+		// in recovery mode and in that case, don't invalidate the snapshot on a
+		// head mismatch.
+		var recover bool
+
+		head := bc.CurrentBlock()
+		if layer := rawdb.ReadSnapshotRecoveryNumber(bc.db); layer != nil && *layer >= head.NumberU64() {
+			utils.Logger().Warn().Uint64("diskbase", *layer).Uint64("chainhead", head.NumberU64()).Msg("Enabling snapshot recovery")
+			recover = true
+		}
+		snapconfig := snapshot.Config{
+			CacheSize:  bc.cacheConfig.SnapshotLimit,
+			Recovery:   recover,
+			NoBuild:    bc.cacheConfig.SnapshotNoBuild,
+			AsyncBuild: !bc.cacheConfig.SnapshotWait,
+		}
+		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Hash())
+	}
 
 	// Take ownership of this particular state
 	go bc.update()
@@ -462,7 +524,7 @@ func (bc *BlockChainImpl) ValidateNewBlock(block *types.Block, beaconChain Block
 }
 
 func (bc *BlockChainImpl) validateNewBlock(block *types.Block) error {
-	state, err := state.New(bc.CurrentBlock().Root(), bc.stateCache)
+	state, err := state.New(bc.CurrentBlock().Root(), bc.stateCache, bc.snaps)
 	if err != nil {
 		return err
 	}
@@ -520,7 +582,7 @@ func (bc *BlockChainImpl) loadLastState() error {
 		return bc.Reset()
 	}
 	// Make sure the state associated with the block is available
-	if _, err := state.New(currentBlock.Root(), bc.stateCache); err != nil {
+	if _, err := state.New(currentBlock.Root(), bc.stateCache, bc.snaps); err != nil {
 		// Dangling block without a state associated, init from scratch
 		utils.Logger().Warn().
 			Str("number", currentBlock.Number().String()).
@@ -617,7 +679,7 @@ func (bc *BlockChainImpl) SetHead(head uint64) error {
 		headBlockGauge.Update(int64(newHeadBlock.NumberU64()))
 	}
 	if currentBlock := bc.CurrentBlock(); currentBlock != nil {
-		if _, err := state.New(currentBlock.Root(), bc.stateCache); err != nil {
+		if _, err := state.New(currentBlock.Root(), bc.stateCache, bc.snaps); err != nil {
 			// Rewound state missing, rolled back to before pivot, reset to genesis
 			bc.currentBlock.Store(bc.genesisBlock)
 			headBlockGauge.Update(int64(bc.genesisBlock.NumberU64()))
@@ -694,7 +756,12 @@ func (bc *BlockChainImpl) State() (*state.DB, error) {
 }
 
 func (bc *BlockChainImpl) StateAt(root common.Hash) (*state.DB, error) {
-	return state.New(root, bc.stateCache)
+	return state.New(root, bc.stateCache, bc.snaps)
+}
+
+// Snapshots returns the blockchain snapshot tree.
+func (bc *BlockChainImpl) Snapshots() *snapshot.Tree {
+	return bc.snaps
 }
 
 func (bc *BlockChainImpl) Reset() error {
@@ -739,7 +806,7 @@ func (bc *BlockChainImpl) repair(head **types.Block) error {
 	valsToRemove := map[common.Address]struct{}{}
 	for {
 		// Abort if we've rewound to a head block that does have associated state
-		if _, err := state.New((*head).Root(), bc.stateCache); err == nil {
+		if _, err := state.New((*head).Root(), bc.stateCache, bc.snaps); err == nil {
 			utils.Logger().Info().
 				Str("number", (*head).Number().String()).
 				Str("hash", (*head).Hash().Hex()).
@@ -1007,7 +1074,7 @@ func (bc *BlockChainImpl) GetReceiptsByHash(hash common.Hash) types.Receipts {
 		return nil
 	}
 
-	receipts := rawdb.ReadReceipts(bc.db, hash, *number)
+	receipts := rawdb.ReadReceipts(bc.db, hash, *number, nil)
 	bc.receiptsCache.Add(hash, receipts)
 	return receipts
 }
@@ -1051,6 +1118,15 @@ func (bc *BlockChainImpl) Stop() {
 		return
 	}
 
+	// Ensure that the entirety of the state snapshot is journalled to disk.
+	var snapBase common.Hash
+	if bc.snaps != nil {
+		var err error
+		if snapBase, err = bc.snaps.Journal(bc.CurrentBlock().Header().Root()); err != nil {
+			utils.Logger().Error().Err(err).Msg("Failed to journal state snapshot")
+		}
+	}
+
 	if !atomic.CompareAndSwapInt32(&bc.running, 0, 1) {
 		return
 	}
@@ -1071,11 +1147,11 @@ func (bc *BlockChainImpl) Stop() {
 	// We're writing three different states to catch different restart scenarios:
 	//  - HEAD:     So we don't need to reprocess any blocks in the general case
 	//  - HEAD-1:   So we don't do large reorgs if our HEAD becomes an uncle
-	//  - HEAD-127: So we have a hard limit on the number of blocks reexecuted
+	//  - HEAD-TriesInMemory: So we have a configurable hard limit on the number of blocks reexecuted (default 128)
 	if !bc.cacheConfig.Disabled {
 		triedb := bc.stateCache.TrieDB()
 
-		for _, offset := range []uint64{0, 1, triesInMemory - 1} {
+		for _, offset := range []uint64{0, 1, bc.cacheConfig.TriesInMemory - 1} {
 			if number := bc.CurrentBlock().NumberU64(); number > offset {
 				recent := bc.GetHeaderByNumber(number - offset)
 				if recent != nil {
@@ -1090,12 +1166,28 @@ func (bc *BlockChainImpl) Stop() {
 				}
 			}
 		}
+		if snapBase != (common.Hash{}) {
+			utils.Logger().Info().Interface("root", snapBase).Msg("Writing snapshot state to disk")
+			if err := triedb.Commit(snapBase, true); err != nil {
+				utils.Logger().Error().Err(err).Msg("Failed to commit recent state trie")
+			}
+		}
 		for !bc.triegc.Empty() {
-			triedb.Dereference(bc.triegc.PopItem().(common.Hash))
+			v := common.Hash(bc.triegc.PopItem())
+			triedb.Dereference(v)
 		}
 		if size, _ := triedb.Size(); size != 0 {
 			utils.Logger().Error().Msg("Dangling trie nodes after full cleanup")
 		}
+	}
+	// Flush the collected preimages to disk
+	if err := bc.stateCache.TrieDB().CommitPreimages(); err != nil {
+		utils.Logger().Error().Interface("err", err).Msg("Failed to commit trie preimages")
+	}
+	// Ensure all live cached entries be saved into disk, so that we can skip
+	// cache warmup when node restarts.
+	if bc.cacheConfig.TrieCleanJournal != "" {
+		bc.triedb.SaveCache(bc.cacheConfig.TrieCleanJournal)
 	}
 	utils.Logger().Info().Msg("Blockchain manager stopped")
 }
@@ -1400,9 +1492,10 @@ func (bc *BlockChainImpl) WriteBlockWithState(
 	} else {
 		// Full but not archive node, do proper garbage collection
 		triedb.Reference(root, common.Hash{}) // metadata reference to keep trie alive
+		// r := common.Hash(root)
 		bc.triegc.Push(root, -int64(block.NumberU64()))
 
-		if current := block.NumberU64(); current > triesInMemory {
+		if current := block.NumberU64(); current > bc.cacheConfig.TriesInMemory {
 			// If we exceeded our memory allowance, flush matured singleton nodes to disk
 			var (
 				nodes, imgs = triedb.Size()
@@ -1412,7 +1505,7 @@ func (bc *BlockChainImpl) WriteBlockWithState(
 				triedb.Cap(limit - ethdb.IdealBatchSize)
 			}
 			// Find the next state trie we need to commit
-			header := bc.GetHeaderByNumber(current - triesInMemory)
+			header := bc.GetHeaderByNumber(current - bc.cacheConfig.TriesInMemory)
 			if header != nil {
 				chosen := header.Number().Uint64()
 
@@ -1420,11 +1513,11 @@ func (bc *BlockChainImpl) WriteBlockWithState(
 				if bc.gcproc > bc.cacheConfig.TrieTimeLimit {
 					// If we're exceeding limits but haven't reached a large enough memory gap,
 					// warn the user that the system is becoming unstable.
-					if chosen < lastWrite+triesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
+					if chosen < lastWrite+bc.cacheConfig.TriesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
 						utils.Logger().Info().
 							Dur("time", bc.gcproc).
 							Dur("allowance", bc.cacheConfig.TrieTimeLimit).
-							Float64("optimum", float64(chosen-lastWrite)/triesInMemory).
+							Float64("optimum", float64(chosen-lastWrite)/float64(bc.cacheConfig.TriesInMemory)).
 							Msg("State in memory for too long, committing")
 					}
 					// Flush an entire trie and restart the counters
@@ -1442,7 +1535,7 @@ func (bc *BlockChainImpl) WriteBlockWithState(
 					if -number > bc.maxGarbCollectedBlkNum {
 						bc.maxGarbCollectedBlkNum = -number
 					}
-					triedb.Dereference(root.(common.Hash))
+					triedb.Dereference(root)
 				}
 			}
 		}
@@ -1473,7 +1566,7 @@ func (bc *BlockChainImpl) WriteBlockWithState(
 	if err := rawdb.WriteCxLookupEntries(batch, block); err != nil {
 		return NonStatTy, err
 	}
-	if err := rawdb.WritePreimages(batch, block.NumberU64(), state.Preimages()); err != nil {
+	if err := rawdb.WritePreimages(batch, state.Preimages()); err != nil {
 		return NonStatTy, err
 	}
 
@@ -1524,11 +1617,64 @@ func (bc *BlockChainImpl) InsertChain(chain types.Blocks, verifyHeaders bool) (i
 
 	n, events, logs, err := bc.insertChain(chain, verifyHeaders)
 	bc.PostChainEvents(events, logs)
+	if err == nil {
+		// there should be only 1 block.
+		for _, b := range chain {
+			if b.Epoch().Uint64() > 0 {
+				err := bc.saveLeaderRotationMeta(b.Header())
+				if err != nil {
+					utils.Logger().Error().Err(err).Msg("save leader continuous blocks count error")
+					return n, err
+				}
+			}
+		}
+	}
 	if bc.isInitTiKV() && err != nil {
 		// if has some error, master writer node will release the permission
 		_, _ = bc.redisPreempt.Unlock()
 	}
 	return n, err
+}
+
+func (bc *BlockChainImpl) saveLeaderRotationMeta(h *block.Header) error {
+	blockPubKey, err := bc.getLeaderPubKeyFromCoinbase(h)
+	if err != nil {
+		return err
+	}
+	type stored struct {
+		pub    []byte
+		epoch  uint64
+		count  uint64
+		shifts uint64
+	}
+	var s stored
+	// error is possible here only on the first iteration, so we can ignore it
+	s.pub, s.epoch, s.count, s.shifts, _ = rawdb.ReadLeaderRotationMeta(bc.db)
+
+	// increase counter only if the same leader and epoch
+	if bytes.Equal(s.pub, blockPubKey.Bytes[:]) && s.epoch == h.Epoch().Uint64() {
+		s.count++
+	} else {
+		s.count = 1
+	}
+	// we should increase shifts if the leader is changed.
+	if !bytes.Equal(s.pub, blockPubKey.Bytes[:]) {
+		s.shifts++
+	}
+	// but set to zero if new
+	if s.epoch != h.Epoch().Uint64() {
+		s.shifts = 0
+	}
+
+	err = rawdb.WriteLeaderRotationMeta(bc.db, blockPubKey.Bytes[:], h.Epoch().Uint64(), s.count, s.shifts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (bc *BlockChainImpl) LeaderRotationMeta() (publicKeyBytes []byte, epoch, count, shifts uint64, err error) {
+	return rawdb.ReadLeaderRotationMeta(bc.db)
 }
 
 // insertChain will execute the actual chain insertion and event aggregation. The
@@ -1681,7 +1827,7 @@ func (bc *BlockChainImpl) insertChain(chain types.Blocks, verifyHeaders bool) (i
 		} else {
 			parent = chain[i-1]
 		}
-		state, err := state.New(parent.Root(), bc.stateCache)
+		state, err := state.New(parent.Root(), bc.stateCache, bc.snaps)
 		if err != nil {
 			return i, events, coalescedLogs, err
 		}
@@ -2487,10 +2633,10 @@ func (bc *BlockChainImpl) ReadCXReceipts(shardID uint32, blockNum uint64, blockH
 	return cxs, nil
 }
 
-func (bc *BlockChainImpl) CXMerkleProof(toShardID uint32, block *types.Block) (*types.CXMerkleProof, error) {
-	proof := &types.CXMerkleProof{BlockNum: block.Number(), BlockHash: block.Hash(), ShardID: block.ShardID(), CXReceiptHash: block.Header().OutgoingReceiptHash(), CXShardHashes: []common.Hash{}, ShardIDs: []uint32{}}
+func (bc *BlockChainImpl) CXMerkleProof(toShardID uint32, block *block.Header) (*types.CXMerkleProof, error) {
+	proof := &types.CXMerkleProof{BlockNum: block.Number(), BlockHash: block.Hash(), ShardID: block.ShardID(), CXReceiptHash: block.OutgoingReceiptHash(), CXShardHashes: []common.Hash{}, ShardIDs: []uint32{}}
 
-	epoch := block.Header().Epoch()
+	epoch := block.Epoch()
 	shardingConfig := shard.Schedule.InstanceForEpoch(epoch)
 	shardNum := int(shardingConfig.NumShards())
 
@@ -2602,8 +2748,8 @@ func (bc *BlockChainImpl) ReadValidatorStats(
 	return rawdb.ReadValidatorStats(bc.db, addr)
 }
 
-func (bc *BlockChainImpl) UpdateValidatorVotingPower(
-	batch rawdb.DatabaseWriter,
+func UpdateValidatorVotingPower(
+	bc BlockChain,
 	block *types.Block,
 	newEpochSuperCommittee, currentEpochSuperCommittee *shard.State,
 	state *state.DB,
@@ -2629,7 +2775,7 @@ func (bc *BlockChainImpl) UpdateValidatorVotingPower(
 			// 	bc.db, currentValidator, currentEpochSuperCommittee.Epoch,
 			// )
 			// rawdb.DeleteValidatorStats(bc.db, currentValidator)
-			stats, err := rawdb.ReadValidatorStats(bc.db, currentValidator)
+			stats, err := rawdb.ReadValidatorStats(bc.ChainDb(), currentValidator)
 			if err != nil {
 				stats = staking.NewEmptyStats()
 			}
@@ -2679,7 +2825,7 @@ func (bc *BlockChainImpl) UpdateValidatorVotingPower(
 
 	networkWide := votepower.AggregateRosters(rosters)
 	for key, value := range networkWide {
-		stats, err := rawdb.ReadValidatorStats(bc.db, key)
+		stats, err := rawdb.ReadValidatorStats(bc.ChainDb(), key)
 		if err != nil {
 			stats = staking.NewEmptyStats()
 		}
@@ -3260,6 +3406,60 @@ func (bc *BlockChainImpl) SuperCommitteeForNextEpoch(
 	return nextCommittee, err
 }
 
+// GetLeaderPubKeyFromCoinbase retrieve corresponding blsPublicKey from Coinbase Address
+func (bc *BlockChainImpl) GetLeaderPubKeyFromCoinbase(h *block.Header) (*bls.PublicKeyWrapper, error) {
+	if cached, ok := bc.leaderPubKeyFromCoinbase.Get(h.Number().Uint64()); ok {
+		return cached.(*bls.PublicKeyWrapper), nil
+	}
+	rs, err := bc.getLeaderPubKeyFromCoinbase(h)
+	if err != nil {
+		return nil, err
+	}
+	bc.leaderPubKeyFromCoinbase.Add(h.Number().Uint64(), rs)
+	return rs, nil
+}
+
+// getLeaderPubKeyFromCoinbase retrieve corresponding blsPublicKey from Coinbase Address
+func (bc *BlockChainImpl) getLeaderPubKeyFromCoinbase(h *block.Header) (*bls.PublicKeyWrapper, error) {
+	shardState, err := bc.ReadShardState(h.Epoch())
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot read shard state %v %s",
+			h.Epoch(),
+			h.Coinbase().Hash().Hex(),
+		)
+	}
+
+	committee, err := shardState.FindCommitteeByID(h.ShardID())
+	if err != nil {
+		return nil, err
+	}
+
+	committerKey := new(bls2.PublicKey)
+	isStaking := bc.Config().IsStaking(h.Epoch())
+	for _, member := range committee.Slots {
+		if isStaking {
+			// After staking the coinbase address will be the address of bls public key
+			if utils.GetAddressFromBLSPubKeyBytes(member.BLSPublicKey[:]) == h.Coinbase() {
+				if committerKey, err = bls.BytesToBLSPublicKey(member.BLSPublicKey[:]); err != nil {
+					return nil, err
+				}
+				return &bls.PublicKeyWrapper{Object: committerKey, Bytes: member.BLSPublicKey}, nil
+			}
+		} else {
+			if member.EcdsaAddress == h.Coinbase() {
+				if committerKey, err = bls.BytesToBLSPublicKey(member.BLSPublicKey[:]); err != nil {
+					return nil, err
+				}
+				return &bls.PublicKeyWrapper{Object: committerKey, Bytes: member.BLSPublicKey}, nil
+			}
+		}
+	}
+	return nil, errors.Errorf(
+		"cannot find corresponding BLS Public Key coinbase %s",
+		h.Coinbase().Hex(),
+	)
+}
+
 func (bc *BlockChainImpl) EnablePruneBeaconChainFeature() {
 	bc.pruneBeaconChainEnable = true
 }
@@ -3312,14 +3512,14 @@ func (bc *BlockChainImpl) tikvCleanCache() {
 		for i := bc.latestCleanCacheNum + 1; i <= to; i++ {
 			// build previous block statedb
 			fromBlock := bc.GetBlockByNumber(i)
-			fromTrie, err := state.New(fromBlock.Root(), bc.stateCache)
+			fromTrie, err := state.New(fromBlock.Root(), bc.stateCache, bc.snaps)
 			if err != nil {
 				continue
 			}
 
 			// build current block statedb
 			toBlock := bc.GetBlockByNumber(i + 1)
-			toTrie, err := state.New(toBlock.Root(), bc.stateCache)
+			toTrie, err := state.New(toBlock.Root(), bc.stateCache, bc.snaps)
 			if err != nil {
 				continue
 			}
@@ -3419,7 +3619,7 @@ func (bc *BlockChainImpl) InitTiKV(conf *harmonyconfig.TiKVConfig) {
 		// If redis is empty, the hit rate will be too low and the synchronization block speed will be slow
 		// set LOAD_PRE_FETCH is yes can significantly improve this.
 		if os.Getenv("LOAD_PRE_FETCH") == "yes" {
-			if trie, err := state.New(bc.CurrentBlock().Root(), bc.stateCache); err == nil {
+			if trie, err := state.New(bc.CurrentBlock().Root(), bc.stateCache, bc.snaps); err == nil {
 				trie.Prefetch(512)
 			} else {
 				log.Println("LOAD_PRE_FETCH ERR: ", err)

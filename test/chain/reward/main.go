@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/harmony-one/harmony/core/rawdb"
 
 	msg_pb "github.com/harmony-one/harmony/api/proto/message"
 	"github.com/harmony-one/harmony/crypto/bls"
@@ -109,8 +109,8 @@ func main() {
 	genesis := gspec.MustCommit(database)
 	_ = genesis
 	engine := chain.NewEngine()
-	bc, _ := core.NewBlockChain(database, state.NewDatabase(database), nil, nil, gspec.Config, engine, vm.Config{})
-	statedb, _ := state.New(common2.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()))
+	bc, _ := core.NewBlockChain(database, nil, nil, nil, gspec.Config, engine, vm.Config{})
+	statedb, _ := state.New(common2.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
 	msg := createValidator()
 	statedb.AddBalance(msg.ValidatorAddress, new(big.Int).Mul(big.NewInt(5e18), big.NewInt(2000)))
 	validator, err := core.VerifyAndCreateValidatorFromMsg(

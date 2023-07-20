@@ -3,6 +3,7 @@ package node
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/harmony-one/harmony/staking/slash"
 	staking "github.com/harmony-one/harmony/staking/types"
 	"github.com/harmony-one/harmony/webhooks"
-	"github.com/pkg/errors"
 )
 
 const p2pMsgPrefixSize = 5
@@ -115,7 +115,7 @@ func (node *Node) transactionMessageHandler(msgPayload []byte) {
 				Msg("Failed to deserialize transaction list")
 			return
 		}
-		node.addPendingTransactions(txs)
+		addPendingTransactions(node.registry, txs)
 	}
 }
 
@@ -139,8 +139,8 @@ func (node *Node) stakingMessageHandler(msgPayload []byte) {
 // BroadcastNewBlock is called by consensus leader to sync new blocks with other clients/nodes.
 // NOTE: For now, just send to the client (basically not broadcasting)
 // TODO (lc): broadcast the new blocks to new nodes doing state sync
-func (node *Node) BroadcastNewBlock(newBlock *types.Block) {
-	groups := []nodeconfig.GroupID{node.NodeConfig.GetClientGroupID()}
+func (node *Node) BroadcastNewBlock(newBlock *types.Block, nodeConfig *nodeconfig.ConfigType) {
+	groups := []nodeconfig.GroupID{nodeConfig.GetClientGroupID()}
 	utils.Logger().Info().
 		Msgf(
 			"broadcasting new block %d, group %s", newBlock.NumberU64(), groups[0],
@@ -327,52 +327,20 @@ func getCrosslinkHeadersForShards(shardChain core.BlockChain, curBlock *types.Bl
 	return headers, nil
 }
 
-// VerifyNewBlock is called by consensus participants to verify the block (account model) they are
-// running consensus on.
-func VerifyNewBlock(nodeConfig *nodeconfig.ConfigType, blockChain core.BlockChain, beaconChain core.BlockChain) func(*types.Block) error {
-	return func(newBlock *types.Block) error {
-		if err := blockChain.ValidateNewBlock(newBlock, beaconChain); err != nil {
-			if hooks := nodeConfig.WebHooks.Hooks; hooks != nil {
-				if p := hooks.ProtocolIssues; p != nil {
-					url := p.OnCannotCommit
-					go func() {
-						webhooks.DoPost(url, map[string]interface{}{
-							"bad-header": newBlock.Header(),
-							"reason":     err.Error(),
-						})
-					}()
-				}
-			}
-			utils.Logger().Error().
-				Str("blockHash", newBlock.Hash().Hex()).
-				Int("numTx", len(newBlock.Transactions())).
-				Int("numStakingTx", len(newBlock.StakingTransactions())).
-				Err(err).
-				Msg("[VerifyNewBlock] Cannot Verify New Block!!!")
-			return errors.Errorf(
-				"[VerifyNewBlock] Cannot Verify New Block!!! block-hash %s txn-count %d",
-				newBlock.Hash().Hex(),
-				len(newBlock.Transactions()),
-			)
-		}
-		return nil
-	}
-}
-
 // PostConsensusProcessing is called by consensus participants, after consensus is done, to:
-// 1. add the new block to blockchain
-// 2. [leader] send new block to the client
-// 3. [leader] send cross shard tx receipts to destination shard
+// 1. [leader] send new block to the client
+// 2. [leader] send cross shard tx receipts to destination shard
 func (node *Node) PostConsensusProcessing(newBlock *types.Block) error {
 	if node.Consensus.IsLeader() {
 		if node.IsRunningBeaconChain() {
 			// TODO: consider removing this and letting other nodes broadcast new blocks.
 			// But need to make sure there is at least 1 node that will do the job.
-			node.BroadcastNewBlock(newBlock)
+			node.BroadcastNewBlock(newBlock, node.NodeConfig)
 		}
-		node.BroadcastCXReceipts(newBlock)
+		BroadcastCXReceipts(newBlock, node.Consensus)
 	} else {
 		if node.Consensus.Mode() != consensus.Listening {
+			numSignatures := node.Consensus.NumSignaturesIncludedInBlock(newBlock)
 			utils.Logger().Info().
 				Uint64("blockNum", newBlock.NumberU64()).
 				Uint64("epochNum", newBlock.Epoch().Uint64()).
@@ -380,26 +348,25 @@ func (node *Node) PostConsensusProcessing(newBlock *types.Block) error {
 				Str("blockHash", newBlock.Hash().String()).
 				Int("numTxns", len(newBlock.Transactions())).
 				Int("numStakingTxns", len(newBlock.StakingTransactions())).
-				Uint32("numSignatures", node.Consensus.NumSignaturesIncludedInBlock(newBlock)).
+				Uint32("numSignatures", numSignatures).
 				Msg("BINGO !!! Reached Consensus")
 
-			numSig := float64(node.Consensus.NumSignaturesIncludedInBlock(newBlock))
-			node.Consensus.UpdateValidatorMetrics(numSig, float64(newBlock.NumberU64()))
+			node.Consensus.UpdateValidatorMetrics(float64(numSignatures), float64(newBlock.NumberU64()))
 
 			// 1% of the validator also need to do broadcasting
 			rnd := rand.Intn(100)
 			if rnd < 1 {
 				// Beacon validators also broadcast new blocks to make sure beacon sync is strong.
 				if node.IsRunningBeaconChain() {
-					node.BroadcastNewBlock(newBlock)
+					node.BroadcastNewBlock(newBlock, node.NodeConfig)
 				}
-				node.BroadcastCXReceipts(newBlock)
+				BroadcastCXReceipts(newBlock, node.Consensus)
 			}
 		}
 	}
 
 	// Broadcast client requested missing cross shard receipts if there is any
-	node.BroadcastMissingCXReceipts()
+	BroadcastMissingCXReceipts(node.Consensus)
 
 	if h := node.NodeConfig.WebHooks.Hooks; h != nil {
 		if h.Availability != nil {
@@ -433,7 +400,7 @@ func (node *Node) PostConsensusProcessing(newBlock *types.Block) error {
 	return nil
 }
 
-// BootstrapConsensus is the a goroutine to check number of peers and start the consensus
+// BootstrapConsensus is a goroutine to check number of peers and start the consensus
 func (node *Node) BootstrapConsensus() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -447,6 +414,7 @@ func (node *Node) BootstrapConsensus() error {
 			if numPeersNow >= min {
 				utils.Logger().Info().Msg("[bootstrap] StartConsensus")
 				enoughMinPeers <- struct{}{}
+				fmt.Println("Bootstrap consensus done.", numPeersNow, " peers are connected")
 				return
 			}
 			utils.Logger().Info().
@@ -462,7 +430,7 @@ func (node *Node) BootstrapConsensus() error {
 		return ctx.Err()
 	case <-enoughMinPeers:
 		go func() {
-			node.startConsensus <- struct{}{}
+			node.Consensus.StartChannel()
 		}()
 		return nil
 	}

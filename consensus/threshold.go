@@ -15,7 +15,7 @@ import (
 func (consensus *Consensus) didReachPrepareQuorum() error {
 	logger := utils.Logger()
 	logger.Info().Msg("[OnPrepare] Received Enough Prepare Signatures")
-	leaderPriKey, err := consensus.GetConsensusLeaderPrivateKey()
+	leaderPriKey, err := consensus.getConsensusLeaderPrivateKey()
 	if err != nil {
 		utils.Logger().Warn().Err(err).Msg("[OnPrepare] leader not found")
 		return err
@@ -46,7 +46,7 @@ func (consensus *Consensus) didReachPrepareQuorum() error {
 			Msg("[didReachPrepareQuorum] Unparseable block data")
 		return err
 	}
-	commitPayload := signature.ConstructCommitPayload(consensus.Blockchain(),
+	commitPayload := signature.ConstructCommitPayload(consensus.Blockchain().Config(),
 		blockObj.Epoch(), blockObj.Hash(), blockObj.NumberU64(), blockObj.Header().ViewID().Uint64())
 
 	// so by this point, everyone has committed to the blockhash of this block

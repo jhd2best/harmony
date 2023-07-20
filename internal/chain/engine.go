@@ -186,7 +186,7 @@ func (e *engineImpl) VerifyVRF(
 	return nil
 }
 
-// retrieve corresponding blsPublicKey from Coinbase Address
+// GetLeaderPubKeyFromCoinbase retrieve corresponding blsPublicKey from Coinbase Address
 func GetLeaderPubKeyFromCoinbase(
 	blockchain engine.ChainReader, h *block.Header,
 ) (*bls.PublicKeyWrapper, error) {
@@ -632,7 +632,7 @@ func payloadArgsFromCrossLink(cl types.CrossLink) payloadArgs {
 }
 
 func (args payloadArgs) constructPayload(chain engine.ChainReader) []byte {
-	return signature.ConstructCommitPayload(chain, args.epoch, args.blockHash, args.number, args.viewID)
+	return signature.ConstructCommitPayload(chain.Config(), args.epoch, args.blockHash, args.number, args.viewID)
 }
 
 type sigArgs struct {
