@@ -14,14 +14,14 @@ const (
 	BlockByHashesUpperCap int = 10 // number of get blocks by hashes upper cap
 	BlockByHashesLowerCap int = 3  // number of get blocks by hashes lower cap
 
-	LastMileBlocksThreshold int = 10
+	LastMileBlocksThreshold int    = 10
+	SyncLoopBatchSize       uint32 = 30  // maximum size for one query of block hashes
+	VerifyHeaderBatchSize   uint64 = 100 // block chain header verification batch size (not used for now)
+	LastMileBlocksSize             = 50
 
 	// SoftQueueCap is the soft cap of size in resultQueue. When the queue size is larger than this limit,
 	// no more request will be assigned to workers to wait for InsertChain to finish.
 	SoftQueueCap int = 100
-
-	// DefaultConcurrency is the default settings for concurrency
-	DefaultConcurrency int = 4
 
 	// ShortRangeTimeout is the timeout for each short range sync, which allow short range sync
 	// to restart automatically when stuck in `getBlockHashes`
@@ -50,8 +50,15 @@ type (
 		// config for beacon config
 		BHConfig *BeaconHelperConfig
 
+		// use memory db
+		UseMemDB bool
+
 		// log the stage progress
 		LogProgress bool
+
+		// logs every single process and error to help debugging stream sync
+		// DebugMode is not accessible to the end user and is only an aid for development
+		DebugMode bool
 	}
 
 	// BeaconHelperConfig is the extra config used for beaconHelper which uses
@@ -64,10 +71,10 @@ type (
 
 func (c *Config) fixValues() {
 	if c.Concurrency == 0 {
-		c.Concurrency = DefaultConcurrency
+		c.Concurrency = c.MinStreams
 	}
 	if c.Concurrency > c.MinStreams {
-		c.MinStreams = c.Concurrency
+		c.Concurrency = c.MinStreams
 	}
 	if c.MinStreams > c.InitStreams {
 		c.InitStreams = c.MinStreams

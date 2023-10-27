@@ -95,7 +95,7 @@ func (consensus *Consensus) updatePublicKeys(pubKeys, allowlist []bls_cosi.Publi
 	if len(allKeys) != 0 {
 		consensus.LeaderPubKey = &allKeys[0]
 		consensus.getLogger().Info().
-			Str("info", consensus.LeaderPubKey.Bytes.Hex()).Msg("My Leader")
+			Str("info", consensus.LeaderPubKey.Bytes.Hex()).Msg("Setting leader as first validator, because provided new keys")
 	} else {
 		consensus.getLogger().Error().
 			Msg("[UpdatePublicKeys] Participants is empty")
@@ -145,9 +145,9 @@ func (consensus *Consensus) updateBitmaps() {
 		Str("MessageType", consensus.phase.String()).
 		Msg("[UpdateBitmaps] Updating consensus bitmaps")
 	members := consensus.Decider.Participants()
-	prepareBitmap, _ := bls_cosi.NewMask(members, nil)
-	commitBitmap, _ := bls_cosi.NewMask(members, nil)
-	multiSigBitmap, _ := bls_cosi.NewMask(members, nil)
+	prepareBitmap := bls_cosi.NewMask(members)
+	commitBitmap := bls_cosi.NewMask(members)
+	multiSigBitmap := bls_cosi.NewMask(members)
 	consensus.prepareBitmap = prepareBitmap
 	consensus.commitBitmap = commitBitmap
 	consensus.multiSigBitmap = multiSigBitmap
@@ -575,7 +575,7 @@ func (consensus *Consensus) selfCommit(payload []byte) error {
 	copy(blockHash[:], payload[:32])
 
 	// Leader sign and add commit message
-	block := consensus.FBFTLog.GetBlockByHash(blockHash)
+	block := consensus.fBFTLog.GetBlockByHash(blockHash)
 	if block == nil {
 		return errGetPreparedBlock
 	}
@@ -627,11 +627,8 @@ func (consensus *Consensus) NumSignaturesIncludedInBlock(block *types.Block) uin
 	count := uint32(0)
 	members := consensus.Decider.Participants()
 	// TODO(audit): do not reconstruct the Mask
-	mask, err := bls.NewMask(members, nil)
-	if err != nil {
-		return count
-	}
-	err = mask.SetMask(block.Header().LastCommitBitmap())
+	mask := bls.NewMask(members)
+	err := mask.SetMask(block.Header().LastCommitBitmap())
 	if err != nil {
 		return count
 	}
@@ -666,6 +663,12 @@ func (consensus *Consensus) getLogger() *zerolog.Logger {
 func VerifyNewBlock(hooks *webhooks.Hooks, blockChain core.BlockChain, beaconChain core.BlockChain) func(*types.Block) error {
 	return func(newBlock *types.Block) error {
 		if err := blockChain.ValidateNewBlock(newBlock, beaconChain); err != nil {
+			switch {
+			case errors.Is(err, core.ErrKnownBlock):
+				return nil
+			default:
+			}
+
 			if hooks := hooks; hooks != nil {
 				if p := hooks.ProtocolIssues; p != nil {
 					url := p.OnCannotCommit
@@ -683,7 +686,7 @@ func VerifyNewBlock(hooks *webhooks.Hooks, blockChain core.BlockChain, beaconCha
 				Int("numStakingTx", len(newBlock.StakingTransactions())).
 				Err(err).
 				Msgf("[VerifyNewBlock] Cannot Verify New Block!!!, blockHeight %d, myHeight %d", newBlock.NumberU64(), blockChain.CurrentHeader().NumberU64())
-			return errors.Errorf(
+			return errors.WithMessagef(err,
 				"[VerifyNewBlock] Cannot Verify New Block!!! block-hash %s txn-count %d",
 				newBlock.Hash().Hex(),
 				len(newBlock.Transactions()),

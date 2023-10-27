@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/harmony-one/harmony/core/types"
+	"github.com/harmony-one/harmony/internal/utils"
 	syncProto "github.com/harmony-one/harmony/p2p/stream/protocols/sync"
 	sttypes "github.com/harmony-one/harmony/p2p/stream/types"
 	"github.com/pkg/errors"
@@ -132,6 +133,10 @@ func (sh *srHelper) getBlocksByHashes(ctx context.Context, hashes []common.Hash,
 
 func (sh *srHelper) checkPrerequisites() error {
 	if sh.syncProtocol.NumStreams() < sh.config.Concurrency {
+		utils.Logger().Info().
+			Int("available streams", sh.syncProtocol.NumStreams()).
+			Interface("concurrency", sh.config.Concurrency).
+			Msg("not enough streams to do concurrent processes")
 		return ErrNotEnoughStreams
 	}
 	return nil
@@ -204,6 +209,12 @@ func (sh *srHelper) doGetBlocksByHashesRequest(ctx context.Context, hashes []com
 func (sh *srHelper) removeStreams(sts []sttypes.StreamID) {
 	for _, st := range sts {
 		sh.syncProtocol.RemoveStream(st)
+	}
+}
+
+func (sh *srHelper) streamsFailed(sts []sttypes.StreamID, reason string) {
+	for _, st := range sts {
+		sh.syncProtocol.StreamFailed(st, reason)
 	}
 }
 

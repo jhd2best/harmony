@@ -12,17 +12,17 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/routing"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	libp2p_pubsub "github.com/libp2p/go-libp2p-pubsub"
 	libp2p_config "github.com/libp2p/go-libp2p/config"
 	libp2p_crypto "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
 	libp2p_host "github.com/libp2p/go-libp2p/core/host"
 	libp2p_network "github.com/libp2p/go-libp2p/core/network"
 	libp2p_peer "github.com/libp2p/go-libp2p/core/peer"
 	libp2p_peerstore "github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
@@ -536,7 +536,7 @@ func (host *HostV2) ListenClose(net libp2p_network.Network, addr ma.Multiaddr) {
 
 // called when a connection opened
 func (host *HostV2) Connected(net libp2p_network.Network, conn libp2p_network.Conn) {
-	host.logger.Info().Interface("node", conn.RemotePeer()).Msg("peer connected")
+	host.logger.Debug().Interface("node", conn.RemotePeer()).Msg("peer connected")
 
 	for _, function := range host.onConnections.GetAll() {
 		if err := function(net, conn); err != nil {
@@ -547,7 +547,7 @@ func (host *HostV2) Connected(net libp2p_network.Network, conn libp2p_network.Co
 
 // called when a connection closed
 func (host *HostV2) Disconnected(net libp2p_network.Network, conn libp2p_network.Conn) {
-	host.logger.Info().Interface("node", conn.RemotePeer()).Msg("peer disconnected")
+	host.logger.Debug().Interface("node", conn.RemotePeer()).Msg("peer disconnected")
 
 	for _, function := range host.onDisconnects.GetAll() {
 		if err := function(conn); err != nil {

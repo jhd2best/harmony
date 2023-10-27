@@ -36,6 +36,7 @@ type HarmonyConfig struct {
 	DNSSync    DnsSync
 	ShardData  ShardDataConfig
 	GPO        GasPriceOracleConfig
+	Preimage   *PreimageConfig
 }
 
 func (hc HarmonyConfig) ToRPCServerConfig() nodeconfig.RPCServerConfig {
@@ -84,6 +85,7 @@ func (hc HarmonyConfig) ToRPCServerConfig() nodeconfig.RPCServerConfig {
 		WSPort:             hc.WS.Port,
 		WSAuthPort:         hc.WS.AuthPort,
 		DebugEnabled:       hc.RPCOpt.DebugEnabled,
+		PreimagesEnabled:   hc.RPCOpt.PreimagesEnabled,
 		EthRPCsEnabled:     hc.RPCOpt.EthRPCsEnabled,
 		StakingRPCsEnabled: hc.RPCOpt.StakingRPCsEnabled,
 		LegacyRPCsEnabled:  hc.RPCOpt.LegacyRPCsEnabled,
@@ -287,6 +289,7 @@ type RpcOptConfig struct {
 	RateLimterEnabled  bool   // Enable Rate limiter for RPC
 	RequestsPerSecond  int    // for RPC rate limiter
 	EvmCallTimeout     string // Timeout for eth_call
+	PreimagesEnabled   bool   // Expose preimage API
 }
 
 type DevnetConfig struct {
@@ -301,6 +304,13 @@ type RevertConfig struct {
 	RevertBeacon bool
 	RevertTo     int
 	RevertBefore int
+}
+
+type PreimageConfig struct {
+	ImportFrom    string
+	ExportTo      string
+	GenerateStart uint64
+	GenerateEnd   uint64
 }
 
 type LegacyConfig struct {
@@ -343,6 +353,7 @@ type StagedSyncConfig struct {
 	VerifyHeaderBatchSize  uint64 // batch size to verify header before insert to chain
 	UseMemDB               bool   // it uses memory by default. set it to false to use disk
 	LogProgress            bool   // log the full sync progress in console
+	DebugMode              bool   // log every single process and error to help to debug syncing issues (DebugMode is not accessible to the end user and is only an aid for development)
 }
 
 type PriceLimit int64

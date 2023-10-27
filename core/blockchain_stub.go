@@ -3,6 +3,8 @@ package core
 import (
 	"math/big"
 
+	"github.com/harmony-one/harmony/core/state/snapshot"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -62,6 +64,10 @@ func (a Stub) StateAt(common.Hash) (*state.DB, error) {
 	return nil, errors.Errorf("method StateAt not implemented for %s", a.Name)
 }
 
+func (a Stub) TrieNode(hash common.Hash) ([]byte, error) {
+	return []byte{}, errors.Errorf("method TrieNode not implemented for %s", a.Name)
+}
+
 func (a Stub) HasBlock(hash common.Hash, number uint64) bool {
 	return false
 }
@@ -88,6 +94,14 @@ func (a Stub) GetBlockByNumber(number uint64) *types.Block {
 
 func (a Stub) GetReceiptsByHash(hash common.Hash) types.Receipts {
 	return nil
+}
+
+func (a Stub) ContractCode(hash common.Hash) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (a Stub) ValidatorCode(hash common.Hash) ([]byte, error) {
+	return []byte{}, nil
 }
 
 func (a Stub) Stop() {
@@ -424,6 +438,18 @@ func (a Stub) InitTiKV(conf *harmonyconfig.TiKVConfig) {
 	return
 }
 
-func (a Stub) LeaderRotationMeta() (publicKeyBytes []byte, epoch, count, shifts uint64, err error) {
-	return nil, 0, 0, 0, errors.Errorf("method LeaderRotationMeta not implemented for %s", a.Name)
+func (a Stub) LeaderRotationMeta() LeaderRotationMeta {
+	return LeaderRotationMeta{}
+}
+
+func (a Stub) CommitPreimages() error {
+	return errors.Errorf("method CommitPreimages not implemented for %s", a.Name)
+}
+
+func (a Stub) GetStateCache() state.Database {
+	return nil
+}
+
+func (a Stub) GetSnapshotTrie() *snapshot.Tree {
+	return nil
 }

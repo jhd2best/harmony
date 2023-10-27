@@ -65,6 +65,7 @@ var defaultConfig = harmonyconfig.HarmonyConfig{
 		RateLimterEnabled:  true,
 		RequestsPerSecond:  nodeconfig.DefaultRPCRateLimit,
 		EvmCallTimeout:     nodeconfig.DefaultEvmCallTimeout,
+		PreimagesEnabled:   false,
 	},
 	BLSKeys: harmonyconfig.BlsConfig{
 		KeyDir:   "./.hmy/blskeys",
@@ -149,6 +150,13 @@ var defaultRevertConfig = harmonyconfig.RevertConfig{
 	RevertTo:     0,
 }
 
+var defaultPreimageConfig = harmonyconfig.PreimageConfig{
+	ImportFrom:    "",
+	ExportTo:      "",
+	GenerateStart: 0,
+	GenerateEnd:   0,
+}
+
 var defaultLogContext = harmonyconfig.LogContext{
 	IP:   "127.0.0.1",
 	Port: 9000,
@@ -178,6 +186,7 @@ var defaultStagedSyncConfig = harmonyconfig.StagedSyncConfig{
 	MaxMemSyncCycleSize:    1024,  // max number of blocks to use a single transaction for staged sync
 	UseMemDB:               true,  // it uses memory by default. set it to false to use disk
 	LogProgress:            false, // log the full sync progress in console
+	DebugMode:              false, // log every single process and error to help to debug the syncing (DebugMode is not accessible to the end user and is only an aid for development)
 }
 
 var (
@@ -231,7 +240,7 @@ var (
 		Downloader:           true,
 		StagedSync:           false,
 		StagedSyncCfg:        defaultStagedSyncConfig,
-		Concurrency:          4,
+		Concurrency:          2,
 		MinPeers:             2,
 		InitStreams:          2,
 		MaxAdvertiseWaitTime: 2, //minutes
@@ -287,6 +296,11 @@ func getDefaultDevnetConfigCopy() harmonyconfig.DevnetConfig {
 
 func getDefaultRevertConfigCopy() harmonyconfig.RevertConfig {
 	config := defaultRevertConfig
+	return config
+}
+
+func getDefaultPreimageConfigCopy() harmonyconfig.PreimageConfig {
+	config := defaultPreimageConfig
 	return config
 }
 

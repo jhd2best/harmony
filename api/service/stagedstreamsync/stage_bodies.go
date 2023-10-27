@@ -10,6 +10,7 @@ import (
 	"github.com/harmony-one/harmony/core/types"
 	"github.com/harmony-one/harmony/internal/utils"
 	sttypes "github.com/harmony-one/harmony/p2p/stream/types"
+	"github.com/harmony-one/harmony/shard"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/pkg/errors"
 )
@@ -60,6 +61,11 @@ func (b *StageBodies) Exec(ctx context.Context, firstCycle bool, invalidBlockRev
 		return nil
 	}
 
+	// shouldn't execute for epoch chain
+	if b.configs.bc.ShardID() == shard.BeaconChainShardID && !s.state.isBeaconNode {
+		return nil
+	}
+
 	maxHeight := s.state.status.targetBN
 	currentHead := b.configs.bc.CurrentBlock().NumberU64()
 	if currentHead >= maxHeight {
@@ -77,7 +83,7 @@ func (b *StageBodies) Exec(ctx context.Context, firstCycle bool, invalidBlockRev
 		return errV
 	}
 
-	if currProgress == 0 {
+	if currProgress <= currentHead {
 		if err := b.cleanAllBlockDBs(ctx); err != nil {
 			return err
 		}
@@ -161,13 +167,22 @@ func (b *StageBodies) runBlockWorkerLoop(ctx context.Context, gbm *blockDownload
 				Msg(WrapStagedSyncMsg("downloadRawBlocks failed"))
 			err = errors.Wrap(err, "request error")
 			gbm.HandleRequestError(batch, err, stid)
-		} else if blockBytes == nil || len(blockBytes) == 0 {
+		} else if blockBytes == nil {
 			utils.Logger().Warn().
 				Str("stream", string(stid)).
 				Interface("block numbers", batch).
-				Msg(WrapStagedSyncMsg("downloadRawBlocks failed, received empty blockBytes"))
+				Msg(WrapStagedSyncMsg("downloadRawBlocks failed, received invalid (nil) blockBytes"))
+			err := errors.New("downloadRawBlocks received invalid (nil) blockBytes")
+			gbm.HandleRequestError(batch, err, stid)
+			b.configs.protocol.StreamFailed(stid, "downloadRawBlocks failed")
+		} else if len(blockBytes) == 0 {
+			utils.Logger().Warn().
+				Str("stream", string(stid)).
+				Interface("block numbers", batch).
+				Msg(WrapStagedSyncMsg("downloadRawBlocks failed, received empty blockBytes, remote peer is not fully synced"))
 			err := errors.New("downloadRawBlocks received empty blockBytes")
 			gbm.HandleRequestError(batch, err, stid)
+			b.configs.protocol.RemoveStream(stid)
 		} else {
 			if err = b.saveBlocks(ctx, gbm.tx, batch, blockBytes, sigBytes, loopID, stid); err != nil {
 				panic(ErrSaveBlocksToDbFailed)
@@ -209,7 +224,7 @@ func (b *StageBodies) redownloadBadBlock(ctx context.Context, s *StageState) err
 		isOneOfTheBadStreams := false
 		for _, id := range s.state.invalidBlock.StreamID {
 			if id == stid {
-				b.configs.protocol.RemoveStream(stid)
+				b.configs.protocol.StreamFailed(stid, "re-download bad block from this stream failed")
 				isOneOfTheBadStreams = true
 				break
 			}

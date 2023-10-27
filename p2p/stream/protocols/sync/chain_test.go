@@ -46,6 +46,50 @@ func (tch *testChainHelper) getBlocksByHashes(hs []common.Hash) ([]*types.Block,
 	return bs, nil
 }
 
+func (tch *testChainHelper) getNodeData(hs []common.Hash) ([][]byte, error) {
+	data := makeTestNodeData(len(hs))
+	return data, nil
+}
+
+func (tch *testChainHelper) getReceipts(hs []common.Hash) ([]types.Receipts, error) {
+	testReceipts := makeTestReceipts(len(hs), 3)
+	receipts := make([]types.Receipts, len(hs))
+	for i, _ := range hs {
+		receipts[i] = testReceipts
+	}
+	return receipts, nil
+}
+
+func checkGetReceiptsResult(b []byte, hs []common.Hash) error {
+	var msg = &syncpb.Message{}
+	if err := protobuf.Unmarshal(b, msg); err != nil {
+		return err
+	}
+	bhResp, err := msg.GetReceiptsResponse()
+	if err != nil {
+		return err
+	}
+	if len(hs) != len(bhResp.Receipts) {
+		return errors.New("unexpected size")
+	}
+	return nil
+}
+
+func checkGetNodeDataResult(b []byte, hs []common.Hash) error {
+	var msg = &syncpb.Message{}
+	if err := protobuf.Unmarshal(b, msg); err != nil {
+		return err
+	}
+	bhResp, err := msg.GetNodeDataResponse()
+	if err != nil {
+		return err
+	}
+	if len(hs) != len(bhResp.DataBytes) {
+		return errors.New("unexpected size")
+	}
+	return nil
+}
+
 func numberToHash(bn uint64) common.Hash {
 	var h common.Hash
 	binary.LittleEndian.PutUint64(h[:], bn)
@@ -88,6 +132,28 @@ func makeTestBlock(bn uint64) *types.Block {
 	header := testHeader.Copy()
 	header.SetNumber(big.NewInt(int64(bn)))
 	return types.NewBlockWithHeader(&block.Header{Header: header})
+}
+
+// makeTestReceipts creates fake node data
+func makeTestNodeData(n int) [][]byte {
+	testData := make([][]byte, n)
+	for i := 0; i < n; i++ {
+		testData[i] = types.EmptyRootHash.Bytes()
+	}
+	return testData
+}
+
+// makeTestReceipts creates fake receipts
+func makeTestReceipts(n int, nPerBlock int) []*types.Receipt {
+	receipts := make([]*types.Receipt, nPerBlock)
+	for i := 0; i < nPerBlock; i++ {
+		receipts[i] = &types.Receipt{
+			Status:            types.ReceiptStatusSuccessful,
+			CumulativeGasUsed: 0x888888888,
+			Logs:              make([]*types.Log, 5),
+		}
+	}
+	return receipts
 }
 
 func decodeBlocksBytes(bbs [][]byte) ([]*types.Block, error) {

@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	bls2 "github.com/harmony-one/bls/ffi/go/bls"
 	"github.com/harmony-one/harmony/consensus/signature"
+	"github.com/harmony-one/harmony/core"
 	nodeconfig "github.com/harmony-one/harmony/internal/configs/node"
 	"github.com/harmony-one/harmony/internal/utils"
 	"github.com/rs/zerolog"
@@ -31,7 +32,6 @@ import (
 var (
 	errSenderPubKeyNotLeader  = errors.New("sender pubkey doesn't match leader")
 	errVerifyMessageSignature = errors.New("verify message signature failed")
-	errParsingFBFTMessage     = errors.New("failed parsing FBFT message")
 )
 
 // timeout constant
@@ -157,14 +157,15 @@ func (consensus *Consensus) finalCommit() {
 			Msg("[finalCommit] Unable to construct Committed message")
 		return
 	}
-	msgToSend, FBFTMsg :=
-		network.Bytes,
-		network.FBFTMsg
-	commitSigAndBitmap := FBFTMsg.Payload
-	consensus.FBFTLog.AddVerifiedMessage(FBFTMsg)
+	var (
+		msgToSend          = network.Bytes
+		FBFTMsg            = network.FBFTMsg
+		commitSigAndBitmap = FBFTMsg.Payload
+	)
+	consensus.fBFTLog.AddVerifiedMessage(FBFTMsg)
 	// find correct block content
 	curBlockHash := consensus.blockHash
-	block := consensus.FBFTLog.GetBlockByHash(curBlockHash)
+	block := consensus.fBFTLog.GetBlockByHash(curBlockHash)
 	if block == nil {
 		consensus.getLogger().Warn().
 			Str("blockHash", hex.EncodeToString(curBlockHash[:])).
@@ -278,7 +279,7 @@ func (consensus *Consensus) BlockCommitSigs(blockNum uint64) ([]byte, error) {
 	lastCommits, err := consensus.Blockchain().ReadCommitSig(blockNum)
 	if err != nil ||
 		len(lastCommits) < bls.BLSSignatureSizeInBytes {
-		msgs := consensus.FBFTLog.GetMessagesByTypeSeq(
+		msgs := consensus.FBFTLog().GetMessagesByTypeSeq(
 			msg_pb.MessageType_COMMITTED, blockNum,
 		)
 		if len(msgs) != 1 {
@@ -482,7 +483,7 @@ func (consensus *Consensus) getLastMileBlockIter(bnStart uint64, cb func(iter *L
 	}
 	return cb(&LastMileBlockIter{
 		blockCandidates: blocks,
-		fbftLog:         consensus.FBFTLog,
+		fbftLog:         consensus.fBFTLog,
 		verify:          consensus.BlockVerifier,
 		curIndex:        0,
 		logger:          consensus.getLogger(),
@@ -513,7 +514,7 @@ func (consensus *Consensus) getLastMileBlocksAndMsg(bnStart uint64) ([]*types.Bl
 		msgs   []*FBFTMessage
 	)
 	for blockNum := bnStart; ; blockNum++ {
-		blk, msg, err := consensus.FBFTLog.GetCommittedBlockAndMsgsFromNumber(blockNum, consensus.getLogger())
+		blk, msg, err := consensus.fBFTLog.GetCommittedBlockAndMsgsFromNumber(blockNum, consensus.getLogger())
 		if err != nil {
 			if err == errFBFTLogNotFound {
 				break
@@ -551,7 +552,7 @@ func (consensus *Consensus) preCommitAndPropose(blk *types.Block) error {
 		network.Bytes,
 		network.FBFTMsg
 	bareMinimumCommit := FBFTMsg.Payload
-	consensus.FBFTLog.AddVerifiedMessage(FBFTMsg)
+	consensus.fBFTLog.AddVerifiedMessage(FBFTMsg)
 
 	if err := consensus.verifyLastCommitSig(bareMinimumCommit, blk); err != nil {
 		return errors.Wrap(err, "[preCommitAndPropose] failed verifying last commit sig")
@@ -567,18 +568,23 @@ func (consensus *Consensus) preCommitAndPropose(blk *types.Block) error {
 				nodeconfig.NewGroupIDByShardID(nodeconfig.ShardID(consensus.ShardID)),
 			},
 			p2p.ConstructMessage(msgToSend)); err != nil {
-			consensus.getLogger().Warn().Err(err).Msg("[preCommitAndPropose] Cannot send committed message")
+			consensus.GetLogger().Warn().Err(err).Msg("[preCommitAndPropose] Cannot send committed message")
 		} else {
-			consensus.getLogger().Info().
+			consensus.GetLogger().Info().
 				Str("blockHash", blk.Hash().Hex()).
 				Uint64("blockNum", consensus.BlockNum()).
 				Hex("lastCommitSig", bareMinimumCommit).
 				Msg("[preCommitAndPropose] Sent Committed Message")
 		}
 
-		if _, err := consensus.Blockchain().InsertChain([]*types.Block{blk}, !consensus.FBFTLog.IsBlockVerified(blk.Hash())); err != nil {
-			consensus.getLogger().Error().Err(err).Msg("[preCommitAndPropose] Failed to add block to chain")
-			return
+		if _, err := consensus.Blockchain().InsertChain([]*types.Block{blk}, !consensus.FBFTLog().IsBlockVerified(blk.Hash())); err != nil {
+			switch {
+			case errors.Is(err, core.ErrKnownBlock):
+				consensus.getLogger().Info().Msg("[preCommitAndPropose] Block already known")
+			default:
+				consensus.getLogger().Error().Err(err).Msg("[preCommitAndPropose] Failed to add block to chain")
+				return
+			}
 		}
 
 		consensus.getLogger().Info().Msg("[preCommitAndPropose] Start consensus timer")
@@ -661,7 +667,7 @@ func (consensus *Consensus) tryCatchup() error {
 
 func (consensus *Consensus) commitBlock(blk *types.Block, committedMsg *FBFTMessage) error {
 	if consensus.Blockchain().CurrentBlock().NumberU64() < blk.NumberU64() {
-		if _, err := consensus.Blockchain().InsertChain([]*types.Block{blk}, !consensus.FBFTLog.IsBlockVerified(blk.Hash())); err != nil {
+		if _, err := consensus.Blockchain().InsertChain([]*types.Block{blk}, !consensus.fBFTLog.IsBlockVerified(blk.Hash())); err != nil {
 			consensus.getLogger().Error().Err(err).Msg("[commitBlock] Failed to add block to chain")
 			return err
 		}
@@ -692,7 +698,7 @@ func (consensus *Consensus) rotateLeader(epoch *big.Int) {
 		prev   = consensus.getLeaderPubKey()
 		leader = consensus.getLeaderPubKey()
 	)
-	utils.Logger().Info().Msgf("[Rotating leader] epoch: %v rotation:%v external rotation %v", epoch.Uint64(), bc.Config().IsLeaderRotation(epoch), bc.Config().IsLeaderRotationExternalValidatorsAllowed(epoch, consensus.ShardID))
+	utils.Logger().Info().Msgf("[Rotating leader] epoch: %v rotation:%v external rotation %v", epoch.Uint64(), bc.Config().IsLeaderRotationInternalValidators(epoch), bc.Config().IsLeaderRotationExternalValidatorsAllowed(epoch))
 	ss, err := bc.ReadShardState(epoch)
 	if err != nil {
 		utils.Logger().Error().Err(err).Msg("Failed to read shard state")
@@ -720,24 +726,17 @@ func (consensus *Consensus) rotateLeader(epoch *big.Int) {
 		// mine no less than 3 blocks in a row
 		numBlocksProducedByLeader = minimumBlocksForLeaderInRow
 	}
-	type stored struct {
-		pub    []byte
-		epoch  uint64
-		count  uint64
-		shifts uint64 // count how much changes validator per epoch
-	}
-	var s stored
-	s.pub, s.epoch, s.count, s.shifts, _ = bc.LeaderRotationMeta()
-	if !bytes.Equal(leader.Bytes[:], s.pub) {
+	s := bc.LeaderRotationMeta()
+	if !bytes.Equal(leader.Bytes[:], s.Pub) {
 		// Another leader.
 		return
 	}
-	// if it is the first validator which produce blocks, then it should produce `rest` blocks too.
-	if s.shifts == 0 {
+	// If it is the first validator producing blocks, it should also produce the remaining 'rest' of the blocks.
+	if s.Shifts == 0 {
 		numBlocksProducedByLeader += rest
 	}
-	if s.count < numBlocksProducedByLeader {
-		// Not enough blocks produced by the leader.
+	if s.Count < numBlocksProducedByLeader {
+		// Not enough blocks produced by the leader, continue producing by the same leader.
 		return
 	}
 	// Passed all checks, we can change leader.
@@ -747,8 +746,8 @@ func (consensus *Consensus) rotateLeader(epoch *big.Int) {
 		wasFound bool
 		next     *bls.PublicKeyWrapper
 	)
-	if bc.Config().IsLeaderRotationExternalValidatorsAllowed(epoch, consensus.ShardID) {
-		wasFound, next = consensus.Decider.NthNext(leader, 1)
+	if bc.Config().IsLeaderRotationExternalValidatorsAllowed(epoch) {
+		wasFound, next = consensus.Decider.NthNextValidator(committee.Slots, leader, 1)
 	} else {
 		wasFound, next = consensus.Decider.NthNextHmy(shard.Schedule.InstanceForEpoch(epoch), leader, 1)
 	}
@@ -777,7 +776,7 @@ func (consensus *Consensus) setupForNewConsensus(blk *types.Block, committedMsg 
 	} else {
 		epoch = blk.Epoch()
 	}
-	if consensus.Blockchain().Config().IsLeaderRotation(epoch) {
+	if consensus.Blockchain().Config().IsLeaderRotationInternalValidators(epoch) {
 		consensus.rotateLeader(epoch)
 	}
 
@@ -785,7 +784,7 @@ func (consensus *Consensus) setupForNewConsensus(blk *types.Block, committedMsg 
 	if blk.IsLastBlockInEpoch() {
 		consensus.setMode(consensus.updateConsensusInformation())
 	}
-	consensus.FBFTLog.PruneCacheBeforeBlock(blk.NumberU64())
+	consensus.fBFTLog.PruneCacheBeforeBlock(blk.NumberU64())
 	consensus.resetState()
 }
 
@@ -920,19 +919,12 @@ func (consensus *Consensus) ValidateVdfAndProof(headerObj *block.Header) bool {
 func (consensus *Consensus) DeleteBlocksLessThan(number uint64) {
 	consensus.mutex.Lock()
 	defer consensus.mutex.Unlock()
-	consensus.FBFTLog.deleteBlocksLessThan(number)
+	consensus.fBFTLog.deleteBlocksLessThan(number)
 }
 
 // DeleteMessagesLessThan deletes messages less than given block number.
 func (consensus *Consensus) DeleteMessagesLessThan(number uint64) {
 	consensus.mutex.Lock()
 	defer consensus.mutex.Unlock()
-	consensus.FBFTLog.deleteMessagesLessThan(number)
-}
-
-// DeleteBlockByNumber deletes block by given block number.
-func (consensus *Consensus) DeleteBlockByNumber(number uint64) {
-	consensus.mutex.Lock()
-	defer consensus.mutex.Unlock()
-	consensus.FBFTLog.deleteBlockByNumber(number)
+	consensus.fBFTLog.deleteMessagesLessThan(number)
 }

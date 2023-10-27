@@ -102,7 +102,7 @@ func (b *BlockGen) AddTxWithChain(bc core.BlockChain, tx *types.Transaction) {
 	b.statedb.Prepare(tx.Hash(), common.Hash{}, len(b.txs))
 	coinbase := b.header.Coinbase()
 	gasUsed := b.header.GasUsed()
-	receipt, _, _, _, err := core.ApplyTransaction(b.config, bc, &coinbase, b.gasPool, b.statedb, b.header, tx, &gasUsed, vm.Config{})
+	receipt, _, _, _, err := core.ApplyTransaction(bc, &coinbase, b.gasPool, b.statedb, b.header, tx, &gasUsed, vm.Config{})
 	b.header.SetGasUsed(gasUsed)
 	b.header.SetCoinbase(coinbase)
 	if err != nil {
@@ -248,7 +248,11 @@ func (cr *fakeChainReader) GetHeaderByNumber(number uint64) *block.Header       
 func (cr *fakeChainReader) GetHeaderByHash(hash common.Hash) *block.Header          { return nil }
 func (cr *fakeChainReader) GetHeader(hash common.Hash, number uint64) *block.Header { return nil }
 func (cr *fakeChainReader) GetBlock(hash common.Hash, number uint64) *types.Block   { return nil }
+func (cr *fakeChainReader) GetReceiptsByHash(hash common.Hash) types.Receipts       { return nil }
+func (cr *fakeChainReader) ContractCode(hash common.Hash) ([]byte, error)           { return []byte{}, nil }
+func (cr *fakeChainReader) ValidatorCode(hash common.Hash) ([]byte, error)          { return []byte{}, nil }
 func (cr *fakeChainReader) ReadShardState(epoch *big.Int) (*shard.State, error)     { return nil, nil }
+func (cr *fakeChainReader) TrieNode(hash common.Hash) ([]byte, error)               { return []byte{}, nil }
 func (cr *fakeChainReader) ReadValidatorList() ([]common.Address, error)            { return nil, nil }
 func (cr *fakeChainReader) ValidatorCandidates() []common.Address                   { return nil }
 func (cr *fakeChainReader) SuperCommitteeForNextEpoch(

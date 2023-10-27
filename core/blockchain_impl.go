@@ -90,7 +90,8 @@ var (
 	blockWriteTimer      = metrics.NewRegisteredTimer("chain/write", nil)
 
 	// ErrNoGenesis is the error when there is no genesis.
-	ErrNoGenesis = errors.New("Genesis not found in chain")
+	ErrNoGenesis  = errors.New("Genesis not found in chain")
+	ErrEmptyChain = errors.New("empty chain")
 	// errExceedMaxPendingSlashes ..
 	errExceedMaxPendingSlashes = errors.New("exceeed max pending slashes")
 	errNilEpoch                = errors.New("nil epoch for voting power computation")
@@ -149,6 +150,7 @@ var defaultCacheConfig = &CacheConfig{
 	TrieTimeLimit:  5 * time.Minute,
 	SnapshotLimit:  256,
 	SnapshotWait:   true,
+	Preimages:      true,
 }
 
 type BlockChainImpl struct {
@@ -215,12 +217,13 @@ type BlockChainImpl struct {
 	procInterrupt int32 // interrupt signaler for block processing
 
 	engine                 consensus_engine.Engine
-	processor              Processor // block processor interface
-	validator              Validator // block and state validator interface
+	processor              *StateProcessor // block processor interface
+	validator              *BlockValidator
 	vmConfig               vm.Config
 	badBlocks              *lru.Cache // Bad block cache
 	pendingSlashes         slash.Records
 	maxGarbCollectedBlkNum int64
+	leaderRotationMeta     LeaderRotationMeta
 
 	options Options
 }
@@ -235,7 +238,7 @@ func NewBlockChainWithOptions(
 
 // NewBlockChain returns a fully initialised block chain using information
 // available in the database. It initialises the default Ethereum validator and
-// Processor.
+// Processor. As of Aug-23, this is only used by tests
 func NewBlockChain(
 	db ethdb.Database, stateCache state.Database, beaconChain BlockChain, cacheConfig *CacheConfig, chainConfig *params.ChainConfig,
 	engine consensus_engine.Engine, vmConfig vm.Config,
@@ -334,8 +337,8 @@ func newBlockChainWithOptions(
 		beaconChain = bc
 	}
 
-	bc.SetValidator(NewBlockValidator(chainConfig, bc, engine))
-	bc.SetProcessor(NewStateProcessor(chainConfig, bc, beaconChain, engine))
+	bc.validator = NewBlockValidator(bc)
+	bc.processor = NewStateProcessor(bc, beaconChain)
 
 	// Load any existing snapshot, regenerating it if loading failed
 	if bc.cacheConfig.SnapshotLimit > 0 {
@@ -357,6 +360,18 @@ func newBlockChainWithOptions(
 			AsyncBuild: !bc.cacheConfig.SnapshotWait,
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Hash())
+	}
+
+	curHeader := bc.CurrentBlock().Header()
+	err = bc.buildLeaderRotationMeta(curHeader)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to build leader rotation meta")
+	}
+
+	if cacheConfig.Preimages {
+		if _, _, err := rawdb.WritePreImageStartEndBlock(bc.ChainDb(), curHeader.NumberU64()+1, 0); err != nil {
+			return nil, errors.WithMessage(err, "failed to write pre-image start end blocks")
+		}
 	}
 
 	// Take ownership of this particular state
@@ -447,7 +462,7 @@ func VerifyIncomingReceipts(blockchain BlockChain, block *types.Block) error {
 			}
 		}
 
-		if err := blockchain.Validator().ValidateCXReceiptsProof(cxp); err != nil {
+		if err := NewBlockValidator(blockchain).ValidateCXReceiptsProof(cxp); err != nil {
 			return errors.Wrapf(err, "[verifyIncomingReceipts] verification failed")
 		}
 	}
@@ -479,7 +494,7 @@ func (bc *BlockChainImpl) ValidateNewBlock(block *types.Block, beaconChain Block
 	if block.NumberU64() <= bc.CurrentBlock().NumberU64() {
 		return errors.Errorf("block with the same block number is already committed: %d", block.NumberU64())
 	}
-	if err := bc.Validator().ValidateHeader(block, true); err != nil {
+	if err := bc.validator.ValidateHeader(block, true); err != nil {
 		utils.Logger().Error().
 			Str("blockHash", block.Hash().Hex()).
 			Err(err).
@@ -541,7 +556,7 @@ func (bc *BlockChainImpl) validateNewBlock(block *types.Block) error {
 	}
 
 	// Verify all the hash roots (state, txns, receipts, cross-shard)
-	if err := bc.Validator().ValidateState(
+	if err := bc.validator.ValidateState(
 		block, state, receipts, cxReceipts, usedGas,
 	); err != nil {
 		bc.reportBlock(block, receipts, err)
@@ -725,24 +740,6 @@ func (bc *BlockChainImpl) CurrentBlock() *types.Block {
 // chain. The block is retrieved from the blockchain's internal cache.
 func (bc *BlockChainImpl) CurrentFastBlock() *types.Block {
 	return bc.currentFastBlock.Load().(*types.Block)
-}
-
-func (bc *BlockChainImpl) SetProcessor(processor Processor) {
-	bc.procmu.Lock()
-	defer bc.procmu.Unlock()
-	bc.processor = processor
-}
-
-func (bc *BlockChainImpl) SetValidator(validator Validator) {
-	bc.procmu.Lock()
-	defer bc.procmu.Unlock()
-	bc.validator = validator
-}
-
-func (bc *BlockChainImpl) Validator() Validator {
-	bc.procmu.RLock()
-	defer bc.procmu.RUnlock()
-	return bc.validator
 }
 
 func (bc *BlockChainImpl) Processor() Processor {
@@ -1098,6 +1095,24 @@ func (bc *BlockChainImpl) GetBlocksFromHash(hash common.Hash, n int) (blocks []*
 	return
 }
 
+// ContractCode retrieves a blob of data associated with a contract
+// hash either from ephemeral in-memory cache, or from persistent storage.
+//
+// If the code doesn't exist in the in-memory cache, check the storage with
+// new code scheme.
+func (bc *BlockChainImpl) ContractCode(hash common.Hash) ([]byte, error) {
+	return bc.stateCache.ContractCode(common.Hash{}, hash)
+}
+
+// ValidatorCode retrieves a blob of data associated with a validator
+// hash either from ephemeral in-memory cache, or from persistent storage.
+//
+// If the code doesn't exist in the in-memory cache, check the storage with
+// new code scheme.
+func (bc *BlockChainImpl) ValidatorCode(hash common.Hash) ([]byte, error) {
+	return bc.stateCache.ValidatorCode(common.Hash{}, hash)
+}
+
 func (bc *BlockChainImpl) GetUnclesInChain(b *types.Block, length int) []*block.Header {
 	uncles := []*block.Header{}
 	for i := 0; b != nil && i < length; i++ {
@@ -1183,6 +1198,10 @@ func (bc *BlockChainImpl) Stop() {
 	// Flush the collected preimages to disk
 	if err := bc.stateCache.TrieDB().CommitPreimages(); err != nil {
 		utils.Logger().Error().Interface("err", err).Msg("Failed to commit trie preimages")
+	} else {
+		if _, _, err := rawdb.WritePreImageStartEndBlock(bc.ChainDb(), 0, bc.CurrentBlock().NumberU64()); err != nil {
+			utils.Logger().Error().Interface("err", err).Msg("Failed to mark preimages end block")
+		}
 	}
 	// Ensure all live cached entries be saved into disk, so that we can skip
 	// cache warmup when node restarts.
@@ -1461,8 +1480,11 @@ func (bc *BlockChainImpl) WriteBlockWithState(
 	defer bc.mu.Unlock()
 
 	currentBlock := bc.CurrentBlock()
-	if currentBlock == nil || block.ParentHash() != currentBlock.Hash() {
-		return NonStatTy, errors.New("Hash of parent block doesn't match the current block hash")
+	if currentBlock == nil {
+		return NonStatTy, errors.New("Current block is nil")
+	}
+	if block.ParentHash() != currentBlock.Hash() {
+		return NonStatTy, errors.Errorf("Hash of parent block %s doesn't match the current block hash %s", currentBlock.Hash().Hex(), block.ParentHash().Hex())
 	}
 
 	// Commit state object changes to in-memory trie
@@ -1615,9 +1637,20 @@ func (bc *BlockChainImpl) InsertChain(chain types.Blocks, verifyHeaders bool) (i
 		return len(chain), nil
 	}
 
+	for _, b := range chain {
+		// check if blocks already exist
+		if bc.HasBlock(b.Hash(), b.NumberU64()) {
+			return 0, errors.Wrapf(ErrKnownBlock, "block %s %d already exists", b.Hash().Hex(), b.NumberU64())
+		}
+	}
+
+	prevHash := bc.CurrentBlock().Hash()
 	n, events, logs, err := bc.insertChain(chain, verifyHeaders)
 	bc.PostChainEvents(events, logs)
 	if err == nil {
+		if prevHash == bc.CurrentBlock().Hash() {
+			panic("insertChain failed to update current block")
+		}
 		// there should be only 1 block.
 		for _, b := range chain {
 			if b.Epoch().Uint64() > 0 {
@@ -1636,45 +1669,8 @@ func (bc *BlockChainImpl) InsertChain(chain types.Blocks, verifyHeaders bool) (i
 	return n, err
 }
 
-func (bc *BlockChainImpl) saveLeaderRotationMeta(h *block.Header) error {
-	blockPubKey, err := bc.getLeaderPubKeyFromCoinbase(h)
-	if err != nil {
-		return err
-	}
-	type stored struct {
-		pub    []byte
-		epoch  uint64
-		count  uint64
-		shifts uint64
-	}
-	var s stored
-	// error is possible here only on the first iteration, so we can ignore it
-	s.pub, s.epoch, s.count, s.shifts, _ = rawdb.ReadLeaderRotationMeta(bc.db)
-
-	// increase counter only if the same leader and epoch
-	if bytes.Equal(s.pub, blockPubKey.Bytes[:]) && s.epoch == h.Epoch().Uint64() {
-		s.count++
-	} else {
-		s.count = 1
-	}
-	// we should increase shifts if the leader is changed.
-	if !bytes.Equal(s.pub, blockPubKey.Bytes[:]) {
-		s.shifts++
-	}
-	// but set to zero if new
-	if s.epoch != h.Epoch().Uint64() {
-		s.shifts = 0
-	}
-
-	err = rawdb.WriteLeaderRotationMeta(bc.db, blockPubKey.Bytes[:], h.Epoch().Uint64(), s.count, s.shifts)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (bc *BlockChainImpl) LeaderRotationMeta() (publicKeyBytes []byte, epoch, count, shifts uint64, err error) {
-	return rawdb.ReadLeaderRotationMeta(bc.db)
+func (bc *BlockChainImpl) LeaderRotationMeta() LeaderRotationMeta {
+	return bc.leaderRotationMeta.Clone()
 }
 
 // insertChain will execute the actual chain insertion and event aggregation. The
@@ -1683,7 +1679,7 @@ func (bc *BlockChainImpl) LeaderRotationMeta() (publicKeyBytes []byte, epoch, co
 func (bc *BlockChainImpl) insertChain(chain types.Blocks, verifyHeaders bool) (int, []interface{}, []*types.Log, error) {
 	// Sanity check that we have something meaningful to import
 	if len(chain) == 0 {
-		return 0, nil, nil, nil
+		return 0, nil, nil, ErrEmptyChain
 	}
 	// Do a sanity check that the provided chain is actually ordered and linked
 	for i := 1; i < len(chain); i++ {
@@ -1750,7 +1746,7 @@ func (bc *BlockChainImpl) insertChain(chain types.Blocks, verifyHeaders bool) (i
 			err = <-verifyHeadersResults
 		}
 		if err == nil {
-			err = bc.Validator().ValidateBody(block)
+			err = NewBlockValidator(bc).ValidateBody(block)
 		}
 		switch {
 		case err == ErrKnownBlock:
@@ -1868,7 +1864,7 @@ func (bc *BlockChainImpl) insertChain(chain types.Blocks, verifyHeaders bool) (i
 
 		// Validate the state using the default validator
 		substart = time.Now()
-		if err := bc.Validator().ValidateState(
+		if err := bc.validator.ValidateState(
 			block, state, receipts, cxReceipts, usedGas,
 		); err != nil {
 			bc.reportBlock(block, receipts, err)
@@ -3638,6 +3634,18 @@ func (bc *BlockChainImpl) InitTiKV(conf *harmonyconfig.TiKVConfig) {
 
 	// start clean block tire data process
 	go bc.tikvCleanCache()
+}
+
+func (bc *BlockChainImpl) CommitPreimages() error {
+	return bc.stateCache.TrieDB().CommitPreimages()
+}
+
+func (bc *BlockChainImpl) GetStateCache() state.Database {
+	return bc.stateCache
+}
+
+func (bc *BlockChainImpl) GetSnapshotTrie() *snapshot.Tree {
+	return bc.snaps
 }
 
 var (
