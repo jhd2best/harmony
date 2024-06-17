@@ -456,6 +456,13 @@ func setElectionEpochAndMinFee(chain engine.ChainReader, header *block.Header, s
 		isElected[addr] = struct{}{}
 	}
 
+	if config.IsMaxRate(newShardState.Epoch) {
+		for _, addr := range chain.ValidatorCandidates() {
+			if _, err := availability.UpdateMaxCommissionFee(newShardState.Epoch, config, state, addr, minRate); err != nil {
+				return err
+			}
+		}
+	}
 	// due to a bug in the old implementation of the minimum fee,
 	// unelected validators did not have their fee updated even
 	// when the protocol required them to do so. here we fix it,
@@ -482,7 +489,7 @@ func setElectionEpochAndMinFee(chain engine.ChainReader, header *block.Header, s
 	// higher than the the MaxRate by UpdateMinimumCommissionFee above
 	if config.IsMaxRate(newShardState.Epoch) && minRateNotZero {
 		for _, addr := range chain.ValidatorCandidates() {
-			if _, err := availability.UpdateMaxCommissionFee(state, addr, minRate); err != nil {
+			if _, err := availability.UpdateMaxCommissionFee(newShardState.Epoch, config, state, addr, minRate); err != nil {
 				return err
 			}
 		}
