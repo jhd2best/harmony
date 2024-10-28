@@ -14,7 +14,6 @@ import (
 
 	"github.com/Workiva/go-datastructures/queue"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/harmony-one/harmony/api/service/legacysync/downloader"
 	pb "github.com/harmony-one/harmony/api/service/legacysync/downloader/proto"
 	"github.com/harmony-one/harmony/consensus"
@@ -356,13 +355,6 @@ func CompareSyncPeerConfigByblockHashes(a *SyncPeerConfig, b *SyncPeerConfig) in
 	return 0
 }
 
-// BlockWithSig the serialization structure for request DownloaderRequest_BLOCKWITHSIG
-// The block is encoded as block + commit signature
-type BlockWithSig struct {
-	Block              *types.Block
-	CommitSigAndBitmap []byte
-}
-
 // GetBlocks gets blocks by calling grpc request to the corresponding peer.
 func (peerConfig *SyncPeerConfig) GetBlocks(hashes [][]byte) ([][]byte, error) {
 	response := peerConfig.client.GetBlocksAndSigs(hashes)
@@ -663,7 +655,7 @@ func (ss *StateSync) handleBlockSyncResult(payload [][]byte, tasks syncBlockTask
 
 	for i, blockBytes := range payload {
 		// For forward compatibility at server side, it can be types.block or BlockWithSig
-		blockObj, err := RlpDecodeBlockOrBlockWithSig(blockBytes)
+		blockObj, err := core.RlpDecodeBlockOrBlockWithSig(blockBytes)
 		if err != nil {
 			utils.Logger().Warn().
 				Err(err).
@@ -687,24 +679,6 @@ func (ss *StateSync) handleBlockSyncResult(payload [][]byte, tasks syncBlockTask
 		ss.syncMux.Unlock()
 	}
 	return failedTasks
-}
-
-// RlpDecodeBlockOrBlockWithSig decode payload to types.Block or BlockWithSig.
-// Return the block with commitSig if set.
-func RlpDecodeBlockOrBlockWithSig(payload []byte) (*types.Block, error) {
-	var block *types.Block
-	if err := rlp.DecodeBytes(payload, &block); err == nil {
-		// received payload as *types.Block
-		return block, nil
-	}
-
-	var bws BlockWithSig
-	if err := rlp.DecodeBytes(payload, &bws); err == nil {
-		block := bws.Block
-		block.SetCurrentCommitSig(bws.CommitSigAndBitmap)
-		return block, nil
-	}
-	return nil, errors.New("failed to decode to either types.Block or BlockWithSig")
 }
 
 // downloadTaskQueue is wrapper around Queue with item to be SyncBlockTask
@@ -883,7 +857,7 @@ func (ss *StateSync) UpdateBlockAndStatus(block *types.Block, bc core.BlockChain
 			if err := bc.Engine().VerifyHeaderSignature(bc, block.Header(), sig, bitmap); err != nil {
 				return errors.Wrapf(err, "verify header signature %v", block.Hash().String())
 			}
-			utils.Logger().Debug().Int64("elapsed time", time.Now().Sub(startTime).Milliseconds()).Msg("[Sync] VerifyHeaderSignature")
+			utils.Logger().Debug().Int64("elapsed time", time.Since(startTime).Milliseconds()).Msg("[Sync] VerifyHeaderSignature")
 		}
 		err := bc.Engine().VerifyHeader(bc, block.Header(), verifySeal)
 		if err == engine.ErrUnknownAncestor {
@@ -1093,29 +1067,35 @@ func (ss *StateSync) SyncLoop(bc core.BlockChain, isBeacon bool, consensus *cons
 		ss.RegisterNodeInfo()
 	}
 
+	utils.Logger().Info().
+		Bool("isBeacon", isBeacon).
+		Uint32("ShardID", bc.ShardID()).
+		Uint64("currentHeight", bc.CurrentBlock().NumberU64()).
+		Int("peers count", ss.syncConfig.PeersCount()).
+		Msg("[SYNC] Node is OUT OF SYNC, it's trying to get fully synchronized")
+
 	for {
 		start := time.Now()
 		currentHeight := bc.CurrentBlock().NumberU64()
 		otherHeight, errMaxHeight := getMaxPeerHeight(ss.syncConfig)
 		if errMaxHeight != nil {
-			utils.Logger().Error().
+			utils.Logger().Error().Err(errMaxHeight).
 				Bool("isBeacon", isBeacon).
 				Uint32("ShardID", bc.ShardID()).
 				Uint64("currentHeight", currentHeight).
 				Int("peers count", ss.syncConfig.PeersCount()).
-				Msgf("[SYNC] get max height failed")
+				Msg("[SYNC] get max height failed")
 			break
 		}
 		if currentHeight >= otherHeight {
 			utils.Logger().Info().
-				Msgf("[SYNC] Node is now IN SYNC! (isBeacon: %t, ShardID: %d, otherHeight: %d, currentHeight: %d)",
-					isBeacon, bc.ShardID(), otherHeight, currentHeight)
+				Bool("isBeacon", isBeacon).
+				Uint32("ShardID", bc.ShardID()).
+				Uint64("currentHeight", bc.CurrentBlock().NumberU64()).
+				Int("peers count", ss.syncConfig.PeersCount()).
+				Msg("[SYNC] Node is now IN SYNC!")
 			break
 		}
-		utils.Logger().Info().
-			Msgf("[SYNC] Node is OUT OF SYNC (isBeacon: %t, ShardID: %d, otherHeight: %d, currentHeight: %d)",
-				isBeacon, bc.ShardID(), otherHeight, currentHeight)
-
 		startHash := bc.CurrentBlock().Hash()
 		size := uint32(otherHeight - currentHeight)
 		if size > SyncLoopBatchSize {
@@ -1127,8 +1107,11 @@ func (ss *StateSync) SyncLoop(bc core.BlockChain, isBeacon bool, consensus *cons
 				continue
 			}
 			utils.Logger().Error().Err(err).
-				Msgf("[SYNC] ProcessStateSync failed (isBeacon: %t, ShardID: %d, otherHeight: %d, currentHeight: %d)",
-					isBeacon, bc.ShardID(), otherHeight, currentHeight)
+				Bool("isBeacon", isBeacon).
+				Uint32("ShardID", bc.ShardID()).
+				Uint64("currentHeight", bc.CurrentBlock().NumberU64()).
+				Int("peers count", ss.syncConfig.PeersCount()).
+				Msg("[SYNC] ProcessStateSync failed")
 			ss.purgeOldBlocksFromCache()
 			break
 		}
@@ -1332,6 +1315,8 @@ func (ss *StateSync) isSynchronized(doubleCheck bool) SyncCheckResult {
 		utils.Logger().Info().
 			Uint64("OtherHeight", otherHeight1).
 			Uint64("lastHeight", lastHeight).
+			Uint64("heightDiff", heightDiff).
+			Bool("wasOutOfSync", wasOutOfSync).
 			Msg("[SYNC] Checking sync status")
 		return SyncCheckResult{
 			IsSynchronized: !wasOutOfSync,
@@ -1354,7 +1339,8 @@ func (ss *StateSync) isSynchronized(doubleCheck bool) SyncCheckResult {
 		Uint64("OtherHeight2", otherHeight2).
 		Uint64("lastHeight", lastHeight).
 		Uint64("currentHeight", currentHeight).
-		Msg("[SYNC] Checking sync status")
+		Bool("isOutOfSync", isOutOfSync).
+		Msg("[SYNC] Double checking sync status")
 	// Only confirm out of sync when the node has lower height and didn't move in heights for 2 consecutive checks
 	heightDiff := otherHeight2 - lastHeight
 	if otherHeight2 < lastHeight {

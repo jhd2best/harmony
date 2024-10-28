@@ -35,12 +35,28 @@ help:
 	@echo "test-rosetta - run the rosetta tests"
 	@echo "test-rosetta-attach - attach onto the rosetta testing docker container for inspection"
 	@echo "linux_static - static build the harmony binary & bootnode along with the MCL & BLS libs (for linux)"
+	@echo "linux_static_quick - static build the harmony binary & bootnode more quickly without recompiling dependencies (for linux)"
+	@echo "rpm_init - prepare the RPM build environment by creating directories, copying files, and generating the spec file and source tarball"
+	@echo "rpm_build - build an RPM package for x86_64 architecture using the spec file (<RPMBUILD>/SPECS/harmony.spec)"
 	@echo "rpm - build a harmony RPM pacakge"
 	@echo "rpmpub_dev - publish harmony RPM package to development repo"
 	@echo "rpmpub_prod - publish harmony RPM package to production repo"
+	@echo "deb_init - initialize a Debian package for Harmony, setting up necessary files and configurations in the package structure."
+	@echo "deb_build - build a Debian package from the <HOME>/debbuild directory"
 	@echo "deb - build a harmony Debian pacakge"
 	@echo "debpub_dev - publish harmony Debian package to development repo"
 	@echo "debpub_prod - publish harmony Debian package to production repo"
+	@echo "go-vet - run Go vet to examine Go source code in the current project for potential issues"
+	@echo "go-test - run all Go tests with vet checks and the race detector enabled"
+	@echo "docker - build a Docker image for Harmony using the project root directory's Dockerfile, pulling the latest base image"
+	@echo "travis_go_checker - run the Travis Go checker script to validate Go code in the project"
+	@echo "travis_rpc_checker - run the Travis RPC checker script, defaulting the test branch to 'master' unless overridden by TEST_REPO_BRANCH"
+	@echo "travis_rosetta_checker - run the Travis Rosetta checker script, defaulting the test branch to 'master' unless overridden by TEST_REPO_BRANCH"
+	@echo "debug_external - cleans up environment, rebuilds the binary, and deploys with external nodes"
+	@echo "build_localnet_validator - imports validator keys, funds validator accounts, waits for the epoch, and creates external validators on a local network"
+	@echo "debug-start-log - start a docker compose Promtail->Loki->Grafana stack against localnet logs, needs docker compose and started localnet"
+	@echo "debug-stop-log - stops a docker compose Promtail->Loki->Grafana stack"
+	@echo "debug-restart-log - restart a docker compose Promtail->Loki->Grafana stack"
 
 libs:
 	make -C $(TOP)/mcl -j8
@@ -57,13 +73,26 @@ trace-pointer:
 
 debug:
 	rm -rf .dht-127.0.0.1*
+	# uncomment the following lines to enable debug logging for libp2p, it produces a lot of logs, so disabled by default
+	#export GOLOG_LOG_LEVEL=debug
+	#export GOLOG_OUTPUT=stdout
+	# add VERBOSE=true before bash or run `export VERBOSE=true` on the shell level for have max logging
+	# add LEGACY_SYNC=true before bash  or run `export LEGACY_SYNC=true` on the shell level to switch to the legacy sync
 	bash ./test/debug.sh
 
 debug-kill:
 	bash ./test/kill_node.sh
 
 debug-ext:
-	bash ./test/debug-external.sh
+	# update localnet block per epoch to ensure a stable localnet
+	sed -i 's/localnetBlocksPerEpoch\s*=\s*[0-9]*/localnetBlocksPerEpoch = 64/' internal/configs/sharding/localnet.go
+	sed -i 's/localnetBlocksPerEpochV2\s*=\s*[0-9]*/localnetBlocksPerEpochV2 = 64/' internal/configs/sharding/localnet.go
+	# add VERBOSE=true before bash or run `export VERBOSE=true` on the shell level for have max logging
+	# add LEGACY_SYNC=true before bash  or run `export LEGACY_SYNC=true` on the shell level to switch to the legacy sync
+	bash ./test/debug-external.sh &
+	echo sleep 10s before creating the external validator
+	sleep 10
+	bash ./test/build-localnet-validator.sh
 
 clean:
 	rm -rf ./tmp_log*
@@ -103,6 +132,9 @@ test-rosetta-attach:
 linux_static:
 	make -C $(TOP)/mcl -j8
 	make -C $(TOP)/bls minimised_static BLS_SWAP_G=1 -j8
+	bash ./scripts/go_executable_build.sh -s
+
+linux_static_quick:
 	bash ./scripts/go_executable_build.sh -s
 
 deb_init:
@@ -170,9 +202,13 @@ travis_go_checker:
 	bash ./scripts/travis_go_checker.sh
 
 travis_rpc_checker:
+	# value from command line will override this value, use point test to non-default
+	TEST_REPO_BRANCH='master'
 	bash ./scripts/travis_rpc_checker.sh
 
 travis_rosetta_checker:
+	# value from command line will override this value, use point test to non-default
+	TEST_REPO_BRANCH='master'
 	bash ./scripts/travis_rosetta_checker.sh
 
 debug_external: clean
@@ -180,3 +216,14 @@ debug_external: clean
 
 build_localnet_validator:
 	bash test/build-localnet-validator.sh
+
+protofiles:
+	bash ./scripts/gogenerate.sh
+
+debug-start-log:
+	bash ./test/logs_aggregator/start_log_aggregator.sh
+
+debug-stop-log:
+	bash ./test/logs_aggregator/stop_log_aggregator.sh
+
+debug-restart-log: debug-stop-log debug-start-log

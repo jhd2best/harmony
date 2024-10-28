@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	protobuf "github.com/golang/protobuf/proto"
 	libbls "github.com/harmony-one/bls/ffi/go/bls"
 	msg_pb "github.com/harmony-one/harmony/api/proto/message"
 	"github.com/harmony-one/harmony/core/types"
 	"github.com/harmony-one/harmony/crypto/bls"
 	"github.com/harmony-one/harmony/crypto/hash"
 	"github.com/pkg/errors"
+	protobuf "google.golang.org/protobuf/proto"
 )
 
 // MaxBlockNumDiff limits the received block number to only 100 further from the current block number
@@ -85,7 +85,7 @@ func (consensus *Consensus) onAnnounceSanityChecks(recvMsg *FBFTMessage) bool {
 				Str("logMsgSenderKey", logMsgs[0].SenderPubkeys[0].Bytes.Hex()).
 				Str("logMsgBlockHash", logMsgs[0].BlockHash.Hex()).
 				Str("recvMsg", recvMsg.String()).
-				Str("LeaderKey", consensus.LeaderPubKey.Bytes.Hex()).
+				Str("LeaderKey", consensus.getLeaderPubKey().Bytes.Hex()).
 				Msg("[OnAnnounce] Leader is malicious")
 			if consensus.isViewChangingMode() {
 				consensus.getLogger().Debug().Msg(
@@ -96,7 +96,7 @@ func (consensus *Consensus) onAnnounceSanityChecks(recvMsg *FBFTMessage) bool {
 			}
 		}
 		consensus.getLogger().Debug().
-			Str("leaderKey", consensus.LeaderPubKey.Bytes.Hex()).
+			Str("leaderKey", consensus.getLeaderPubKey().Bytes.Hex()).
 			Msg("[OnAnnounce] Announce message received again")
 	}
 	return consensus.isRightBlockNumCheck(recvMsg)

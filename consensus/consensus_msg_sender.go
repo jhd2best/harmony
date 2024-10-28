@@ -67,10 +67,7 @@ func (sender *MessageSender) SendWithRetry(blockNum uint64, msgType msg_pb.Messa
 			sender.Retry(&msgRetry)
 		}()
 	}
-	// MessageSender lays inside consensus, but internally calls consensus public api.
-	// Tt would be deadlock if run in current thread.
-	go sender.host.SendMessageToGroups(groups, p2pMsg)
-	return nil
+	return sender.host.SendMessageToGroups(groups, p2pMsg)
 }
 
 // DelayedSendWithRetry is similar to SendWithRetry but without the initial message sending but only retries.
@@ -89,10 +86,7 @@ func (sender *MessageSender) DelayedSendWithRetry(blockNum uint64, msgType msg_p
 
 // SendWithoutRetry sends message without retry logic.
 func (sender *MessageSender) SendWithoutRetry(groups []nodeconfig.GroupID, p2pMsg []byte) error {
-	// MessageSender lays inside consensus, but internally calls consensus public api.
-	// It would be deadlock if run in current thread.
-	go sender.host.SendMessageToGroups(groups, p2pMsg)
-	return nil
+	return sender.host.SendMessageToGroups(groups, p2pMsg)
 }
 
 // Retry will retry the consensus message for <RetryTimes> times.
@@ -121,7 +115,7 @@ func (sender *MessageSender) Retry(msgRetry *MessageRetry) {
 
 		msgRetry.retryCount++
 		if err := sender.host.SendMessageToGroups(msgRetry.groups, msgRetry.p2pMsg); err != nil {
-			utils.Logger().Warn().Str("groupID[0]", msgRetry.groups[0].String()).Uint64("blockNum", msgRetry.blockNum).Str("MsgType", msgRetry.msgType.String()).Int("RetryCount", msgRetry.retryCount).Msg("[Retry] Failed re-sending consensus message")
+			utils.Logger().Warn().Str("groupID[0]", msgRetry.groups[0].String()).Uint64("blockNum", msgRetry.blockNum).Str("MsgType", msgRetry.msgType.String()).Int("RetryCount", msgRetry.retryCount).Err(err).Msg("[Retry] Failed re-sending consensus message")
 		} else {
 			utils.Logger().Info().Str("groupID[0]", msgRetry.groups[0].String()).Uint64("blockNum", msgRetry.blockNum).Str("MsgType", msgRetry.msgType.String()).Int("RetryCount", msgRetry.retryCount).Msg("[Retry] Successfully resent consensus message")
 		}

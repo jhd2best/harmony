@@ -3,10 +3,8 @@ package availability
 import (
 	"math/big"
 
-	"github.com/harmony-one/harmony/core/state"
-	"github.com/harmony-one/harmony/internal/params"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/harmony-one/harmony/core/state"
 	"github.com/harmony-one/harmony/crypto/bls"
 	"github.com/harmony-one/harmony/internal/utils"
 	"github.com/harmony-one/harmony/numeric"
@@ -93,7 +91,6 @@ type signerKind struct {
 }
 
 func bumpCount(
-	bc Reader,
 	state ValidatorState,
 	signers []signerKind,
 	stakedAddrSet map[common.Address]struct{},
@@ -130,21 +127,18 @@ func bumpCount(
 
 // IncrementValidatorSigningCounts ..
 func IncrementValidatorSigningCounts(
-	bc Reader,
 	staked *shard.StakedSlots,
 	state ValidatorState,
 	signers, missing shard.SlotList,
 ) error {
 	return bumpCount(
-		bc, state, []signerKind{{false, missing}, {true, signers}},
+		state, []signerKind{{false, missing}, {true, signers}},
 		staked.LookupSet,
 	)
 }
 
 // ComputeCurrentSigning returns (signed, toSign, quotient, error)
-func ComputeCurrentSigning(
-	snapshot, wrapper *staking.ValidatorWrapper,
-) *staking.Computed {
+func ComputeCurrentSigning(snapshot, wrapper *staking.ValidatorWrapper, isHip32 bool) *staking.Computed {
 	statsNow, snapSigned, snapToSign :=
 		wrapper.Counters,
 		snapshot.Counters.NumBlocksSigned,
@@ -159,6 +153,9 @@ func ComputeCurrentSigning(
 	)
 
 	if toSign.Cmp(common.Big0) == 0 {
+		if isHip32 {
+			computed.IsBelowThreshold = false
+		}
 		return computed
 	}
 
@@ -209,7 +206,7 @@ func ComputeAndMutateEPOSStatus(
 		return err
 	}
 
-	computed := ComputeCurrentSigning(snapshot.Validator, wrapper)
+	computed := ComputeCurrentSigning(snapshot.Validator, wrapper, bc.Config().IsHIP32(snapshot.Epoch))
 
 	utils.Logger().
 		Info().Msg("check if signing percent is meeting required threshold")
@@ -269,32 +266,36 @@ func UpdateMinimumCommissionFee(
 	return false, nil
 }
 
+type stateValidatorWrapper interface {
+	ValidatorWrapper(addr common.Address, sendOriginal bool, copyDelegations bool) (*staking.ValidatorWrapper, error)
+}
+
 // UpdateMaxCommissionFee makes sure the max-rate is at least higher than the rate + max-rate-change.
-func UpdateMaxCommissionFee(epoch *big.Int, config *params.ChainConfig, state *state.DB, addr common.Address, minRate numeric.Dec) (bool, error) {
+func UpdateMaxCommissionFee(IsTopMaxRate bool, state stateValidatorWrapper, addr common.Address, curRate numeric.Dec) error {
 	utils.Logger().Info().Msg("begin update max commission fee")
 
 	wrapper, err := state.ValidatorWrapper(addr, true, false)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	minMaxRate := minRate.Add(wrapper.MaxChangeRate)
-	if config.IsTopMaxRate(epoch) {
+	newRate := curRate.Add(wrapper.MaxChangeRate)
+
+	if IsTopMaxRate {
 		hundredPercent := numeric.NewDec(1)
-		if minMaxRate.GT(hundredPercent) {
-			minMaxRate = hundredPercent
+		if newRate.GT(hundredPercent) {
+			newRate = hundredPercent
 		}
 	}
 
-	if wrapper.MaxRate.LT(minMaxRate) {
+	if wrapper.MaxRate.LT(newRate) {
 		utils.Logger().Info().
 			Str("addr", addr.Hex()).
 			Str("old max-rate", wrapper.MaxRate.String()).
-			Str("new max-rate", minMaxRate.String()).
+			Str("new max-rate", newRate.String()).
 			Msg("updating max commission rate")
-		wrapper.MaxRate.SetBytes(minMaxRate.Bytes())
-		return true, nil
+		wrapper.MaxRate.SetBytes(newRate.Bytes())
 	}
 
-	return false, nil
+	return nil
 }

@@ -47,8 +47,6 @@ func (a threadSafeDeciderImpl) IndexOf(key bls.SerializedPublicKey) int {
 }
 
 func (a threadSafeDeciderImpl) ParticipantsCount() int64 {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	return a.decider.ParticipantsCount()
 }
 
@@ -62,12 +60,6 @@ func (a threadSafeDeciderImpl) NthNextHmy(instance shardingconfig.Instance, pubk
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.decider.NthNextHmy(instance, pubkey, next)
-}
-
-func (a threadSafeDeciderImpl) NthNextHmyExt(instance shardingconfig.Instance, wrapper *bls.PublicKeyWrapper, i int) (bool, *bls.PublicKeyWrapper) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.decider.NthNextHmyExt(instance, wrapper, i)
 }
 
 func (a threadSafeDeciderImpl) FirstParticipant(instance shardingconfig.Instance) *bls.PublicKeyWrapper {
@@ -176,4 +168,10 @@ func (a threadSafeDeciderImpl) IsQuorumAchieved(p Phase) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.decider.IsQuorumAchieved(p)
+}
+
+func (a threadSafeDeciderImpl) ComputeTotalPowerByMask(mask *bls.Mask) numeric.Dec {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.decider.ComputeTotalPowerByMask(mask)
 }

@@ -73,6 +73,8 @@ type mainnetSchedule struct{}
 
 func (ms mainnetSchedule) InstanceForEpoch(epoch *big.Int) Instance {
 	switch {
+	case params.MainnetChainConfig.IsHIP32(epoch):
+		return mainnetV5
 	case params.MainnetChainConfig.IsHIP30(epoch):
 		return mainnetV4
 	case params.MainnetChainConfig.IsFeeCollectEpoch(epoch):
@@ -225,6 +227,11 @@ func (ms mainnetSchedule) IsSkippedEpoch(shardID uint32, epoch *big.Int) bool {
 	return false
 }
 
+// RewardFrequency returns the frequency of block reward
+func (ms mainnetSchedule) RewardFrequency() uint64 {
+	return RewardFrequency
+}
+
 var mainnetReshardingEpoch = []*big.Int{big.NewInt(0), big.NewInt(mainnetV0_1Epoch), big.NewInt(mainnetV0_2Epoch), big.NewInt(mainnetV0_3Epoch), big.NewInt(mainnetV0_4Epoch), big.NewInt(mainnetV1Epoch), big.NewInt(mainnetV1_1Epoch), big.NewInt(mainnetV1_2Epoch), big.NewInt(mainnetV1_3Epoch), big.NewInt(mainnetV1_4Epoch), big.NewInt(mainnetV1_5Epoch), big.NewInt(mainnetV2_0Epoch), big.NewInt(mainnetV2_1Epoch), big.NewInt(mainnetV2_2Epoch), params.MainnetChainConfig.TwoSecondsEpoch, params.MainnetChainConfig.SixtyPercentEpoch, params.MainnetChainConfig.HIP6And8Epoch}
 
 var (
@@ -365,6 +372,15 @@ var (
 		// internal slots are 10% of total slots
 		2, 200, 20, 0.06,
 		numeric.MustNewDecFromStr("0.49"),
+		genesis.HarmonyAccountsPostHIP30,
+		genesis.FoundationalNodeAccountsV1_5, emptyAllowlist,
+		feeCollectorsMainnet, numeric.MustNewDecFromStr("0.25"),
+		hip30CollectionAddress, mainnetReshardingEpoch,
+		MainnetSchedule.BlocksPerEpoch(),
+	)
+	mainnetV5 = MustNewInstance(
+		2, 200, 2, 0.06,
+		numeric.MustNewDecFromStr("0.01"),
 		genesis.HarmonyAccountsPostHIP30,
 		genesis.FoundationalNodeAccountsV1_5, emptyAllowlist,
 		feeCollectorsMainnet, numeric.MustNewDecFromStr("0.25"),

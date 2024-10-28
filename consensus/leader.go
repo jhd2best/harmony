@@ -82,12 +82,12 @@ func (consensus *Consensus) announce(block *types.Block) {
 			Str("groupID", string(nodeconfig.NewGroupIDByShardID(
 				nodeconfig.ShardID(consensus.ShardID),
 			))).
-			Msg("[Announce] Cannot send announce message")
+			Msgf("[Announce] Cannot send announce message with message signer %s", key.Pub.Hex())
 	} else {
 		consensus.getLogger().Info().
 			Str("blockHash", block.Hash().Hex()).
 			Uint64("blockNum", block.NumberU64()).
-			Msg("[Announce] Sent Announce Message!!")
+			Msgf("[Announce] Sent Announce Message with message signer %s", key.Pub.Hex())
 	}
 
 	consensus.switchPhase("Announce", FBFTPrepare)
@@ -130,6 +130,8 @@ func (consensus *Consensus) onPrepare(recvMsg *FBFTMessage) {
 	}
 	signerCount := consensus.decider.SignersCount(quorum.Prepare)
 	//// Read - End
+
+	consensus.UpdateLeaderMetrics(float64(signerCount), float64(consensus.getBlockNum()))
 
 	// Check BLS signature for the multi-sig
 	prepareSig := recvMsg.Payload
@@ -297,7 +299,7 @@ func (consensus *Consensus) onCommit(recvMsg *FBFTMessage) {
 			consensus.preCommitAndPropose(blockObj)
 		}
 
-		go func(viewID uint64) {
+		go func(viewID uint64, isLeader bool) {
 			waitTime := 1000 * time.Millisecond
 			maxWaitTime := time.Until(consensus.NextBlockDue) - 200*time.Millisecond
 			if maxWaitTime > waitTime {
@@ -311,9 +313,9 @@ func (consensus *Consensus) onCommit(recvMsg *FBFTMessage) {
 			consensus.mutex.Lock()
 			defer consensus.mutex.Unlock()
 			if viewID == consensus.getCurBlockViewID() {
-				consensus.finalCommit()
+				consensus.finalCommit(isLeader)
 			}
-		}(viewID)
+		}(viewID, consensus.isLeader())
 
 		consensus.msgSender.StopRetry(msg_pb.MessageType_PREPARED)
 	}

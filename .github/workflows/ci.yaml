@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout harmony core code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: harmony
           ref: ${{ github.ref }}
@@ -27,9 +27,9 @@ jobs:
           VERSION=$(git tag -l --sort=-v:refname | head -n 1)
           if git rev-parse $VERSION^{tag} -- &>/dev/null
           then
-            echo "::set-output name=tag_annotated::true"
+            echo "tag_annotated=true" >> $GITHUB_OUTPUT
           else
-            echo "::set-output name=tag_annotated::false"
+            echo "tag_annotated=false" >> $GITHUB_OUTPUT
           fi
         working-directory: harmony
 
@@ -44,26 +44,26 @@ jobs:
 
     steps:
       - name: Checkout dependence repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: harmony-one/mcl
           path: mcl
 
       - name: Checkout dependence repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: harmony-one/bls
           path: bls
 
       - name: Checkout harmony core code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: harmony
           ref: ${{ github.ref }}
           fetch-depth: 0
 
       - name: Set up Go with go.mod
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
           go-version-file: 'harmony/go.mod'
 
@@ -83,8 +83,8 @@ jobs:
         working-directory: harmony
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: harmony
+          name: harmony-${{ matrix.os }}
           path: harmony/bin/*
           retention-days: 1
