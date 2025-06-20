@@ -43,7 +43,7 @@ func (d *Downloader) doShortRangeSync() (int, error) {
 		return 0, errors.Wrap(err, "prerequisite")
 	}
 	curBN := d.bc.CurrentBlock().NumberU64()
-	hashChain, whitelist, err := sh.getHashChain(sh.prepareBlockHashNumbers(curBN))
+	hashChain, whitelist, err := sh.getHashChain(sh.prepareBlockHashNumbers(curBN), true)
 	if err != nil {
 		return 0, errors.Wrap(err, "getHashChain")
 	}
@@ -68,7 +68,7 @@ func (d *Downloader) doShortRangeSync() (int, error) {
 	if err != nil {
 		d.logger.Warn().Err(err).Msg("getBlocksByHashes failed")
 		if !errors.Is(err, context.Canceled) {
-			sh.removeStreams(whitelist) // Remote nodes cannot provide blocks with target hashes
+			sh.removeStreams(whitelist, "short range getBlocksByHashes failed") // Remote nodes cannot provide blocks with target hashes
 		}
 		return 0, errors.Wrap(err, "getBlocksByHashes")
 	}
@@ -79,11 +79,11 @@ func (d *Downloader) doShortRangeSync() (int, error) {
 	if err != nil {
 		d.logger.Warn().Err(err).Int("blocks inserted", n).Msg("Insert block failed")
 		if sh.blameAllStreams(blocks, n, err) {
-			sh.removeStreams(whitelist) // Data provided by remote nodes is corrupted
+			sh.removeStreams(whitelist, "blameAllStreams - short range verifyAndInsertBlocks failed") // Data provided by remote nodes is corrupted
 		} else {
 			// It is the last block gives a wrong commit sig. Blame the provider of the last block.
 			st2Blame := stids[len(stids)-1]
-			sh.removeStreams([]sttypes.StreamID{st2Blame})
+			sh.removeStreams([]sttypes.StreamID{st2Blame}, "short range verifyAndInsertBlocks failed")
 		}
 		return n, err
 	}
@@ -134,7 +134,7 @@ func (d *Downloader) doShortRangeSyncForEpochSync() (int, error) {
 	n, err := d.bc.InsertChain(blocks, true)
 	numBlocksInsertedShortRangeHistogramVec.With(d.promLabels()).Observe(float64(n))
 	if err != nil {
-		sh.removeStreams([]sttypes.StreamID{streamID}) // Data provided by remote nodes is corrupted
+		sh.removeStreams([]sttypes.StreamID{streamID}, "doShortRangeSyncForEpochSync - InsertChain failed") // Data provided by remote nodes is corrupted
 		return n, err
 	}
 	d.logger.Info().Err(err).Int("blocks inserted", n).Msg("Insert block success")
@@ -150,7 +150,7 @@ type srHelper struct {
 	logger zerolog.Logger
 }
 
-func (sh *srHelper) getHashChain(bns []uint64) ([]common.Hash, []sttypes.StreamID, error) {
+func (sh *srHelper) getHashChain(bns []uint64, acceptPartially bool) ([]common.Hash, []sttypes.StreamID, error) {
 	results := newBlockHashResults(bns)
 
 	var wg sync.WaitGroup
@@ -160,7 +160,7 @@ func (sh *srHelper) getHashChain(bns []uint64) ([]common.Hash, []sttypes.StreamI
 		go func(index int) {
 			defer wg.Done()
 
-			hashes, stid, err := sh.doGetBlockHashesRequest(bns)
+			hashes, stid, err := sh.doGetBlockHashesRequest(bns, acceptPartially)
 			if err != nil {
 				sh.logger.Warn().Err(err).Str("StreamID", string(stid)).
 					Msg("doGetBlockHashes return error")
@@ -281,7 +281,7 @@ func (sh *srHelper) prepareBlockHashNumbers(curNumber uint64) []uint64 {
 	return res
 }
 
-func (sh *srHelper) doGetBlockHashesRequest(bns []uint64) ([]common.Hash, sttypes.StreamID, error) {
+func (sh *srHelper) doGetBlockHashesRequest(bns []uint64, acceptPartially bool) ([]common.Hash, sttypes.StreamID, error) {
 	ctx, cancel := context.WithTimeout(sh.ctx, 1*time.Second)
 	defer cancel()
 
@@ -290,10 +290,10 @@ func (sh *srHelper) doGetBlockHashesRequest(bns []uint64) ([]common.Hash, sttype
 		sh.logger.Warn().Err(err).Str("stream", string(stid)).Msg("failed to doGetBlockHashesRequest")
 		return nil, stid, err
 	}
-	if len(hashes) != len(bns) {
+	if !acceptPartially && len(hashes) != len(bns) {
 		err := errors.New("unexpected get block hashes result delivered")
 		sh.logger.Warn().Err(err).Str("stream", string(stid)).Msg("failed to doGetBlockHashesRequest")
-		sh.syncProtocol.RemoveStream(stid)
+		sh.syncProtocol.RemoveStream(stid, "failed to doGetBlockHashesRequest")
 		return nil, stid, err
 	}
 	return hashes, stid, nil
@@ -323,15 +323,15 @@ func (sh *srHelper) doGetBlocksByHashesRequest(ctx context.Context, hashes []com
 	}
 	if err := checkGetBlockByHashesResult(blocks, hashes); err != nil {
 		sh.logger.Warn().Err(err).Str("stream", string(stid)).Msg("failed to getBlockByHashes")
-		sh.syncProtocol.RemoveStream(stid)
+		sh.syncProtocol.RemoveStream(stid, "failed to getBlockByHashes")
 		return nil, stid, err
 	}
 	return blocks, stid, nil
 }
 
-func (sh *srHelper) removeStreams(sts []sttypes.StreamID) {
+func (sh *srHelper) removeStreams(sts []sttypes.StreamID, reason string) {
 	for _, st := range sts {
-		sh.syncProtocol.RemoveStream(st)
+		sh.syncProtocol.RemoveStream(st, reason)
 	}
 }
 

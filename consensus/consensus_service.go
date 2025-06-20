@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"math/big"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -40,7 +39,7 @@ func (consensus *Consensus) WaitForNewRandomness() {
 	}()
 }
 
-// GetNextRnd returns the oldest available randomness along with the hash of the block there randomness preimage is committed.
+// GetNextRnd returns the oldest available randomness along with the hash of the block where randomness preimage is committed.
 func (consensus *Consensus) GetNextRnd() ([vdFAndProofSize]byte, [32]byte, error) {
 	if len(consensus.pendingRnds) == 0 {
 		return [vdFAndProofSize]byte{}, [32]byte{}, errors.New("No available randomness")
@@ -65,7 +64,7 @@ var (
 // Signs the consensus message and returns the marshaled message.
 func (consensus *Consensus) signAndMarshalConsensusMessage(message *msg_pb.Message,
 	priKey *bls_core.SecretKey) ([]byte, error) {
-	if err := consensus.signConsensusMessage(message, priKey); err != nil {
+	if err := signConsensusMessage(message, priKey); err != nil {
 		return empty, err
 	}
 	marshaledMessage, err := protobuf.Marshal(message)
@@ -73,14 +72,6 @@ func (consensus *Consensus) signAndMarshalConsensusMessage(message *msg_pb.Messa
 		return empty, err
 	}
 	return marshaledMessage, nil
-}
-
-// UpdatePublicKeys updates the PublicKeys for
-// quorum on current subcommittee, protected by a mutex
-func (consensus *Consensus) UpdatePublicKeys(pubKeys, allowlist []bls_cosi.PublicKeyWrapper) int64 {
-	consensus.mutex.Lock()
-	defer consensus.mutex.Unlock()
-	return consensus.updatePublicKeys(pubKeys, allowlist)
 }
 
 func (consensus *Consensus) updatePublicKeys(pubKeys, allowlist []bls_cosi.PublicKeyWrapper) int64 {
@@ -121,14 +112,14 @@ func (consensus *Consensus) updatePublicKeys(pubKeys, allowlist []bls_cosi.Publi
 }
 
 // Sign on the hash of the message
-func (consensus *Consensus) signMessage(message []byte, priKey *bls_core.SecretKey) []byte {
+func signMessage(message []byte, priKey *bls_core.SecretKey) []byte {
 	hash := hash.Keccak256(message)
 	signature := priKey.SignHash(hash[:])
 	return signature.Serialize()
 }
 
 // Sign on the consensus message signature field.
-func (consensus *Consensus) signConsensusMessage(message *msg_pb.Message,
+func signConsensusMessage(message *msg_pb.Message,
 	priKey *bls_core.SecretKey) error {
 	message.Signature = nil
 	marshaledMessage, err := protobuf.Marshal(message)
@@ -136,7 +127,7 @@ func (consensus *Consensus) signConsensusMessage(message *msg_pb.Message,
 		return err
 	}
 	// 64 byte of signature on previous data
-	signature := consensus.signMessage(marshaledMessage, priKey)
+	signature := signMessage(marshaledMessage, priKey)
 	message.Signature = signature
 	return nil
 }
@@ -144,7 +135,6 @@ func (consensus *Consensus) signConsensusMessage(message *msg_pb.Message,
 // UpdateBitmaps update the bitmaps for prepare and commit phase
 func (consensus *Consensus) updateBitmaps() {
 	consensus.getLogger().Debug().
-		Str("MessageType", consensus.phase.String()).
 		Msg("[UpdateBitmaps] Updating consensus bitmaps")
 	members := consensus.decider.Participants()
 	prepareBitmap := bls_cosi.NewMask(members)
@@ -207,8 +197,8 @@ func (consensus *Consensus) sendLastSignPower() {
 func (consensus *Consensus) resetState() {
 	consensus.switchPhase("ResetState", FBFTAnnounce)
 
-	consensus.blockHash = [32]byte{}
-	consensus.block = []byte{}
+	consensus.current.blockHash = [32]byte{}
+	consensus.current.block = []byte{}
 	consensus.decider.ResetPrepareAndCommitVotes()
 	if consensus.prepareBitmap != nil {
 		consensus.prepareBitmap.Clear()
@@ -288,7 +278,7 @@ func (consensus *Consensus) checkViewID(msg *FBFTMessage) error {
 		}
 		consensus.setLeaderPubKey(msg.SenderPubkeys[0])
 		consensus.IgnoreViewIDCheck.UnSet()
-		consensus.consensusTimeout[timeoutConsensus].Start()
+		consensus.consensusTimeout[timeoutConsensus].Start("checkViewID")
 		consensus.getLogger().Info().
 			Str("leaderKey", consensus.getLeaderPubKey().Bytes.Hex()).
 			Msg("[checkViewID] Start consensus timer")
@@ -303,12 +293,12 @@ func (consensus *Consensus) checkViewID(msg *FBFTMessage) error {
 
 // SetBlockNum sets the blockNum in consensus object, called at node bootstrap
 func (consensus *Consensus) SetBlockNum(blockNum uint64) {
-	atomic.StoreUint64(&consensus.blockNum, blockNum)
+	consensus.setBlockNum(blockNum)
 }
 
 // SetBlockNum sets the blockNum in consensus object, called at node bootstrap
 func (consensus *Consensus) setBlockNum(blockNum uint64) {
-	atomic.StoreUint64(&consensus.blockNum, blockNum)
+	consensus.current.setBlockNum(blockNum)
 }
 
 // ReadSignatureBitmapPayload read the payload for signature and bitmap; offset is the beginning position of reading
@@ -316,10 +306,10 @@ func (consensus *Consensus) ReadSignatureBitmapPayload(recvPayload []byte, offse
 	consensus.mutex.RLock()
 	members := consensus.decider.Participants()
 	consensus.mutex.RUnlock()
-	return consensus.readSignatureBitmapPayload(recvPayload, offset, members)
+	return readSignatureBitmapPayload(recvPayload, offset, members)
 }
 
-func (consensus *Consensus) readSignatureBitmapPayload(recvPayload []byte, offset int, members multibls.PublicKeys) (*bls_core.Sign, *bls_cosi.Mask, error) {
+func readSignatureBitmapPayload(recvPayload []byte, offset int, members multibls.PublicKeys) (*bls_core.Sign, *bls_cosi.Mask, error) {
 	if offset+bls.BLSSignatureSizeInBytes > len(recvPayload) {
 		return nil, nil, errors.New("payload not have enough length")
 	}
@@ -341,13 +331,13 @@ func (consensus *Consensus) readSignatureBitmapPayload(recvPayload []byte, offse
 // (a) node not in committed: Listening mode
 // (b) node in committed but has any err during processing: Syncing mode
 // (c) node in committed and everything looks good: Normal mode
-func (consensus *Consensus) UpdateConsensusInformation() Mode {
+func (consensus *Consensus) UpdateConsensusInformation(reason string) Mode {
 	consensus.mutex.Lock()
 	defer consensus.mutex.Unlock()
-	return consensus.updateConsensusInformation()
+	return consensus.updateConsensusInformation(reason)
 }
 
-func (consensus *Consensus) updateConsensusInformation() Mode {
+func (consensus *Consensus) updateConsensusInformation(reason string) Mode {
 	curHeader := consensus.Blockchain().CurrentHeader()
 	curEpoch := curHeader.Epoch()
 	nextEpoch := new(big.Int).Add(curHeader.Epoch(), common.Big1)
@@ -372,6 +362,9 @@ func (consensus *Consensus) updateConsensusInformation() Mode {
 	// Enable 2s block time at the twoSecondsEpoch
 	if consensus.Blockchain().Config().IsTwoSeconds(nextEpoch) {
 		consensus.BlockPeriod = 2 * time.Second
+	}
+	if consensus.Blockchain().Config().IsOneSecond(nextEpoch) {
+		consensus.BlockPeriod = 1 * time.Second
 	}
 
 	isFirstTimeStaking := consensus.Blockchain().Config().IsStaking(nextEpoch) &&
@@ -399,7 +392,7 @@ func (consensus *Consensus) updateConsensusInformation() Mode {
 		return Syncing
 	}
 
-	consensus.getLogger().Info().Msg("[UpdateConsensusInformation] Updating.....")
+	consensus.getLogger().Info().Msgf("[UpdateConsensusInformation] Updating....., reason %s", reason)
 	// genesis block is a special case that will have shard state and needs to skip processing
 	isNotGenesisBlock := curHeader.Number().Cmp(big.NewInt(0)) > 0
 	if curHeader.IsLastBlockInEpoch() && isNotGenesisBlock {
@@ -506,7 +499,7 @@ func (consensus *Consensus) updateConsensusInformation() Mode {
 					consensus.GetLogger().Info().
 						Str("myKey", myPubKeys.SerializeToHexStr()).
 						Msg("[UpdateConsensusInformation] I am the New Leader")
-					consensus.ReadySignal(NewProposal(SyncProposal))
+					consensus.ReadySignal(NewProposal(SyncProposal, curHeader.NumberU64()+1), "updateConsensusInformation", "leader changed and I am the new leader")
 				}()
 			}
 			return Normal
@@ -530,6 +523,10 @@ func (consensus *Consensus) IsLeader() bool {
 // the node with the leader public key. This function assume it runs under lock.
 func (consensus *Consensus) isLeader() bool {
 	pub := consensus.getLeaderPubKey()
+	return consensus.isMyKey(pub)
+}
+
+func (consensus *Consensus) isMyKey(pub *bls.PublicKeyWrapper) bool {
 	if pub == nil {
 		return false
 	}
@@ -600,12 +597,7 @@ func (consensus *Consensus) GetFinality() int64 {
 
 // switchPhase will switch FBFTPhase to desired phase.
 func (consensus *Consensus) switchPhase(subject string, desired FBFTPhase) {
-	consensus.getLogger().Info().
-		Str("from:", consensus.phase.String()).
-		Str("to:", desired.String()).
-		Str("switchPhase:", subject)
-
-	consensus.phase = desired
+	consensus.current.switchPhase(subject, desired)
 }
 
 var (
@@ -627,7 +619,7 @@ func (consensus *Consensus) selfCommit(payload []byte) error {
 		return errGetPreparedBlock
 	}
 
-	aggSig, mask, err := consensus.readSignatureBitmapPayload(payload, 32, consensus.decider.Participants())
+	aggSig, mask, err := readSignatureBitmapPayload(payload, 32, consensus.decider.Participants())
 	if err != nil {
 		return errReadBitmapPayload
 	}
@@ -635,7 +627,7 @@ func (consensus *Consensus) selfCommit(payload []byte) error {
 	// Have to keep the block hash so the leader can finish the commit phase of prepared block
 	consensus.resetState()
 
-	copy(consensus.blockHash[:], blockHash[:])
+	copy(consensus.current.blockHash[:], blockHash[:])
 	consensus.switchPhase("selfCommit", FBFTCommit)
 	consensus.aggregatedPrepareSig = aggSig
 	consensus.prepareBitmap = mask
@@ -655,7 +647,7 @@ func (consensus *Consensus) selfCommit(payload []byte) error {
 			quorum.Commit,
 			[]*bls_cosi.PublicKeyWrapper{key.Pub},
 			key.Pri.SignHash(commitPayload),
-			common.BytesToHash(consensus.blockHash[:]),
+			common.BytesToHash(consensus.current.blockHash[:]),
 			block.NumberU64(),
 			block.Header().ViewID().Uint64(),
 		); err != nil {
@@ -692,8 +684,6 @@ func (consensus *Consensus) NumSignaturesIncludedInBlock(block *types.Block) uin
 
 // GetLogger returns logger for consensus contexts added.
 func (consensus *Consensus) GetLogger() *zerolog.Logger {
-	consensus.mutex.RLock()
-	defer consensus.mutex.RUnlock()
 	return consensus.getLogger()
 }
 
@@ -701,9 +691,9 @@ func (consensus *Consensus) GetLogger() *zerolog.Logger {
 func (consensus *Consensus) getLogger() *zerolog.Logger {
 	logger := utils.Logger().With().
 		Uint32("shardID", consensus.ShardID).
-		Uint64("myBlock", consensus.blockNum).
-		Uint64("myViewID", consensus.getCurBlockViewID()).
-		Str("phase", consensus.phase.String()).
+		Uint64("myBlock", consensus.current.getBlockNum()).
+		Uint64("myViewID", consensus.current.getCurBlockViewID()).
+		Str("phase", consensus.getConsensusPhase().String()).
 		Str("mode", consensus.current.Mode().String()).
 		Logger()
 	return &logger
@@ -730,7 +720,7 @@ func (consensus *Consensus) BlockVerifier(newBlock *types.Block) error {
 				}()
 			}
 		}
-		utils.Logger().Error().
+		consensus.GetLogger().Error().
 			Str("blockHash", newBlock.Hash().Hex()).
 			Int("numTx", len(newBlock.Transactions())).
 			Int("numStakingTx", len(newBlock.StakingTransactions())).

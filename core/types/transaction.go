@@ -25,16 +25,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/harmony-one/harmony/internal/params"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
-
 	"github.com/harmony-one/harmony/crypto/hash"
 	common2 "github.com/harmony-one/harmony/internal/common"
+	"github.com/harmony-one/harmony/internal/params"
 	staking "github.com/harmony-one/harmony/staking/types"
+	errs "github.com/pkg/errors"
 )
 
 // no go:generate gencodec -type txdata -field-override txdataMarshaling -out gen_tx_json.go
@@ -176,6 +175,10 @@ func (d *txdata) CopyFrom(d2 *txdata) {
 	d.R = new(big.Int).Set(d2.R)
 	d.S = new(big.Int).Set(d2.S)
 	d.Hash = copyHash(d2.Hash)
+}
+
+func (d *txdata) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
+	return dst.Set(d.Price)
 }
 
 type txdataMarshaling struct {
@@ -527,9 +530,14 @@ func (tx *Transaction) SenderAddress() (common.Address, error) {
 	}
 	addr, err := Sender(signer, tx)
 	if err != nil {
-		return common.Address{}, err
+		return common.Address{}, errs.WithMessage(err, "failed to extract sender address")
 	}
 	return addr, nil
+}
+
+// EffectiveGasPrice returns the effective gas price of the transaction.
+func (tx *Transaction) EffectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
+	return tx.data.effectiveGasPrice(dst, baseFee)
 }
 
 // TxByNonce implements the sort interface to allow sorting a list of transactions

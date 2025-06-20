@@ -154,7 +154,7 @@ func (p *StateProcessor) Process(
 		startTime := time.Now()
 		// Iterate over and process the individual transactions
 		for i, tx := range block.Transactions() {
-			statedb.Prepare(tx.Hash(), block.Hash(), i)
+			statedb.SetTxContext(tx.Hash(), block.Hash(), i)
 			receipt, cxReceipt, stakeMsgs, _, err := ApplyTransaction(
 				p.bc, &beneficiary, gp, statedb, header, tx, usedGas, cfg,
 			)
@@ -177,7 +177,7 @@ func (p *StateProcessor) Process(
 		// Iterate over and process the staking transactions
 		L := len(block.Transactions())
 		for i, tx := range block.StakingTransactions() {
-			statedb.Prepare(tx.Hash(), block.Hash(), i+L)
+			statedb.SetTxContext(tx.Hash(), block.Hash(), i+L)
 			receipt, _, err := ApplyStakingTransaction(
 				p.bc, &beneficiary, gp, statedb, header, tx, usedGas, cfg,
 			)
@@ -334,6 +334,7 @@ func ApplyTransaction(bc ChainContext, author *common.Address, gp *GasPool, stat
 	receipt := types.NewReceipt(root, failedExe, *usedGas)
 	receipt.TxHash = tx.Hash()
 	receipt.GasUsed = result.UsedGas
+	receipt.EffectiveGasPrice = tx.EffectiveGasPrice(big.NewInt(0), nil)
 	// if the transaction created a contract, store the creation address in the receipt.
 	if msg.To() == nil {
 		receipt.ContractAddress = crypto.CreateAddress(vmenv.Context.Origin, tx.Nonce())
@@ -415,6 +416,7 @@ func ApplyStakingTransaction(
 	receipt = types.NewReceipt(root, false, *usedGas)
 	receipt.TxHash = tx.Hash()
 	receipt.GasUsed = gas
+	receipt.EffectiveGasPrice = tx.EffectiveGasPrice(big.NewInt(0), nil)
 
 	if config.IsReceiptLog(header.Epoch()) {
 		receipt.Logs = statedb.GetLogs(tx.Hash(), header.Number().Uint64(), header.Hash())

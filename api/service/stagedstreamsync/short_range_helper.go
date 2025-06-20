@@ -7,7 +7,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/harmony-one/harmony/core/types"
-	"github.com/harmony-one/harmony/internal/utils"
 	syncProto "github.com/harmony-one/harmony/p2p/stream/protocols/sync"
 	sttypes "github.com/harmony-one/harmony/p2p/stream/types"
 	"github.com/pkg/errors"
@@ -20,17 +19,22 @@ type srHelper struct {
 	logger       zerolog.Logger
 }
 
-func (sh *srHelper) getHashChain(ctx context.Context, bns []uint64) ([]common.Hash, []sttypes.StreamID, error) {
+func (sh *srHelper) getHashChain(ctx context.Context, bns []uint64, partially bool) ([]common.Hash, []sttypes.StreamID, error) {
 	results := newBlockHashResults(bns)
 
-	var wg sync.WaitGroup
-	wg.Add(sh.config.Concurrency)
+	concurrency := sh.config.Concurrency
+	if concurrency > sh.syncProtocol.NumStreams() {
+		concurrency = sh.syncProtocol.NumStreams()
+	}
 
-	for i := 0; i != sh.config.Concurrency; i++ {
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i != concurrency; i++ {
 		go func(index int) {
 			defer wg.Done()
 
-			hashes, stid, err := sh.doGetBlockHashesRequest(ctx, bns)
+			hashes, stid, err := sh.doGetBlockHashesRequest(ctx, bns, partially)
 			if err != nil {
 				sh.logger.Warn().Err(err).Str("StreamID", string(stid)).
 					Msg(WrapStagedSyncMsg("doGetBlockHashes return error"))
@@ -70,8 +74,8 @@ func (sh *srHelper) getBlocksByHashes(ctx context.Context, hashes []common.Hash,
 	)
 
 	concurrency := sh.config.Concurrency
-	if concurrency > m.numRequests() {
-		concurrency = m.numRequests()
+	if concurrency > sh.syncProtocol.NumStreams() {
+		concurrency = sh.syncProtocol.NumStreams()
 	}
 
 	wg.Add(concurrency)
@@ -133,7 +137,7 @@ func (sh *srHelper) getBlocksByHashes(ctx context.Context, hashes []common.Hash,
 
 func (sh *srHelper) checkPrerequisites() error {
 	if sh.syncProtocol.NumStreams() < sh.config.Concurrency {
-		utils.Logger().Info().
+		sh.logger.Info().
 			Int("available streams", sh.syncProtocol.NumStreams()).
 			Interface("concurrency", sh.config.Concurrency).
 			Msg("not enough streams to do concurrent processes")
@@ -152,10 +156,7 @@ func (sh *srHelper) prepareBlockHashNumbers(curNumber uint64) []uint64 {
 	return res
 }
 
-func (sh *srHelper) doGetBlockHashesRequest(ctx context.Context, bns []uint64) ([]common.Hash, sttypes.StreamID, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
+func (sh *srHelper) doGetBlockHashesRequest(ctx context.Context, bns []uint64, acceptPartially bool) ([]common.Hash, sttypes.StreamID, error) {
 	hashes, stid, err := sh.syncProtocol.GetBlockHashes(ctx, bns)
 	if err != nil {
 		sh.logger.Warn().Err(err).
@@ -164,7 +165,7 @@ func (sh *srHelper) doGetBlockHashesRequest(ctx context.Context, bns []uint64) (
 			Msg(WrapStagedSyncMsg("failed to doGetBlockHashesRequest"))
 		return nil, stid, err
 	}
-	if len(hashes) != len(bns) {
+	if !acceptPartially && len(hashes) != len(bns) {
 		sh.logger.Warn().Err(ErrUnexpectedBlockHashes).
 			Str("stream", string(stid)).
 			Msg(WrapStagedSyncMsg("failed to doGetBlockHashesRequest"))
@@ -175,9 +176,6 @@ func (sh *srHelper) doGetBlockHashesRequest(ctx context.Context, bns []uint64) (
 }
 
 func (sh *srHelper) doGetBlocksByNumbersRequest(ctx context.Context, bns []uint64) ([]*types.Block, sttypes.StreamID, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	blocks, stid, err := sh.syncProtocol.GetBlocksByNumber(ctx, bns)
 	if err != nil {
 		sh.logger.Warn().Err(err).
@@ -189,26 +187,24 @@ func (sh *srHelper) doGetBlocksByNumbersRequest(ctx context.Context, bns []uint6
 }
 
 func (sh *srHelper) doGetBlocksByHashesRequest(ctx context.Context, hashes []common.Hash, wl []sttypes.StreamID) ([]*types.Block, sttypes.StreamID, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	blocks, stid, err := sh.syncProtocol.GetBlocksByHashes(ctx, hashes,
-		syncProto.WithWhitelist(wl))
+	blocks, stid, err := sh.syncProtocol.GetBlocksByHashes(ctx, hashes, syncProto.WithWhitelist(wl))
 	if err != nil {
 		sh.logger.Warn().Err(err).Str("stream", string(stid)).Msg("failed to getBlockByHashes")
 		return nil, stid, err
 	}
 	if err := checkGetBlockByHashesResult(blocks, hashes); err != nil {
 		sh.logger.Warn().Err(err).Str("stream", string(stid)).Msg(WrapStagedSyncMsg("failed to getBlockByHashes"))
-		sh.syncProtocol.StreamFailed(stid, "failed to getBlockByHashes")
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			sh.syncProtocol.StreamFailed(stid, "failed to getBlockByHashes")
+		}
 		return nil, stid, err
 	}
 	return blocks, stid, nil
 }
 
-func (sh *srHelper) removeStreams(sts []sttypes.StreamID) {
+func (sh *srHelper) removeStreams(sts []sttypes.StreamID, reason string) {
 	for _, st := range sts {
-		sh.syncProtocol.RemoveStream(st)
+		sh.syncProtocol.RemoveStream(st, reason)
 	}
 }
 

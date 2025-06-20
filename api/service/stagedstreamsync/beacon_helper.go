@@ -2,11 +2,11 @@ package stagedstreamsync
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/harmony-one/harmony/core"
 	"github.com/harmony-one/harmony/core/types"
-	"github.com/harmony-one/harmony/internal/utils"
 	"github.com/rs/zerolog"
 )
 
@@ -28,6 +28,8 @@ type (
 		insertC       chan insertTask
 		closeC        chan struct{}
 		logger        zerolog.Logger
+
+		lock sync.RWMutex
 	}
 
 	insertTask struct {
@@ -35,7 +37,7 @@ type (
 	}
 )
 
-func newBeaconHelper(bc blockChain, blockC <-chan *types.Block, insertHook func()) *beaconHelper {
+func newBeaconHelper(bc blockChain, logger zerolog.Logger, blockC <-chan *types.Block, insertHook func()) *beaconHelper {
 	return &beaconHelper{
 		bc:            bc,
 		blockC:        blockC,
@@ -43,8 +45,7 @@ func newBeaconHelper(bc blockChain, blockC <-chan *types.Block, insertHook func(
 		lastMileCache: newBlocksByNumber(lastMileCap),
 		insertC:       make(chan insertTask, 1),
 		closeC:        make(chan struct{}),
-		logger: utils.Logger().With().
-			Str("module", "staged stream sync").
+		logger: logger.With().
 			Str("sub-module", "beacon helper").
 			Logger(),
 	}
@@ -55,7 +56,15 @@ func (bh *beaconHelper) start() {
 }
 
 func (bh *beaconHelper) close() {
-	close(bh.closeC)
+	bh.lock.Lock()
+	defer bh.lock.Unlock()
+
+	select {
+	case <-bh.closeC:
+		// Already closed, do nothing
+	default:
+		close(bh.closeC)
+	}
 }
 
 func (bh *beaconHelper) loop() {
@@ -66,14 +75,16 @@ func (bh *beaconHelper) loop() {
 		case <-t.C:
 			bh.insertAsync()
 
-		case b, ok := <-bh.blockC:
+		case b, ok := <-bh.blockC: // for side chain, it receives last block of each epoch
 			if !ok {
 				return // blockC closed. Node exited
 			}
 			if b == nil {
 				continue
 			}
+			bh.lock.Lock()
 			bh.lastMileCache.push(b)
+			bh.lock.Unlock()
 			bh.insertAsync()
 
 		case it := <-bh.insertC:
@@ -102,6 +113,9 @@ func (bh *beaconHelper) loop() {
 // insertAsync triggers the insert last mile without blocking
 func (bh *beaconHelper) insertAsync() {
 	select {
+	case <-bh.closeC:
+		// Do nothing if closed
+		return
 	case bh.insertC <- insertTask{
 		doneC: make(chan struct{}),
 	}:
@@ -114,11 +128,19 @@ func (bh *beaconHelper) insertSync() {
 	task := insertTask{
 		doneC: make(chan struct{}),
 	}
-	bh.insertC <- task
+	select {
+	case <-bh.closeC:
+		// Do nothing if closed
+		return
+	case bh.insertC <- task:
+	}
 	<-task.doneC
 }
 
 func (bh *beaconHelper) insertLastMileBlocks() (inserted int, bn uint64, err error) {
+	bh.lock.Lock()
+	defer bh.lock.Unlock()
+
 	bn = bh.bc.CurrentBlock().NumberU64() + 1
 	for {
 		b := bh.getNextBlock(bn)
@@ -153,10 +175,6 @@ func (bh *beaconHelper) getNextBlock(expBN uint64) *types.Block {
 		}
 		if b.NumberU64() < expBN {
 			continue
-		}
-		if b.NumberU64() > expBN {
-			bh.lastMileCache.push(b)
-			return nil
 		}
 		return b
 	}

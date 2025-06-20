@@ -9,7 +9,7 @@ import (
 	nodeconfig "github.com/harmony-one/harmony/internal/configs/node"
 )
 
-const tomlConfigVersion = "2.6.2"
+const tomlConfigVersion = "2.6.5"
 
 const (
 	defNetworkType = nodeconfig.Mainnet
@@ -27,24 +27,28 @@ var defaultConfig = harmonyconfig.HarmonyConfig{
 		DataDir:          "./",
 		TraceEnable:      false,
 	},
-	Network: GetDefaultNetworkConfig(defNetworkType),
+	Network:  GetDefaultNetworkConfig(defNetworkType),
+	Localnet: GetDefaultLocalnetConfig(),
 	P2P: harmonyconfig.P2pConfig{
-		Port:                     nodeconfig.DefaultP2PPort,
-		IP:                       nodeconfig.DefaultPublicListenIP,
-		KeyFile:                  "./.hmykey",
-		DiscConcurrency:          nodeconfig.DefaultP2PConcurrency,
-		MaxConnsPerIP:            nodeconfig.DefaultMaxConnPerIP,
-		DisablePrivateIPScan:     false,
-		MaxPeers:                 nodeconfig.DefaultMaxPeers,
-		ConnManagerLowWatermark:  nodeconfig.DefaultConnManagerLowWatermark,
-		ConnManagerHighWatermark: nodeconfig.DefaultConnManagerHighWatermark,
-		WaitForEachPeerToConnect: nodeconfig.DefaultWaitForEachPeerToConnect,
-		NoTransportSecurity:      nodeconfig.DefaultNoTransportSecurity,
-		NAT:                      nodeconfig.DefaultNAT,
-		UserAgent:                nodeconfig.DefaultUserAgent,
-		DialTimeout:              nodeconfig.DefaultDialTimeout,
-		Muxer:                    nodeconfig.DefaultMuxer,
-		NoRelay:                  nodeconfig.DefaultNoRelay,
+		Port:                            nodeconfig.DefaultP2PPort,
+		IP:                              nodeconfig.DefaultPublicListenIP,
+		KeyFile:                         "./.hmykey",
+		DiscConcurrency:                 nodeconfig.DefaultP2PConcurrency,
+		MaxConnsPerIP:                   nodeconfig.DefaultMaxConnPerIP,
+		DisablePrivateIPScan:            false,
+		MaxPeers:                        nodeconfig.DefaultMaxPeers,
+		ConnManagerLowWatermark:         nodeconfig.DefaultConnManagerLowWatermark,
+		ConnManagerHighWatermark:        nodeconfig.DefaultConnManagerHighWatermark,
+		ResourceMgrEnabled:              nodeconfig.DefaultResourceMgrEnabled,
+		ResourceMgrMemoryLimitBytes:     nodeconfig.DefaultResourceMgrMemoryLimitBytes,
+		ResourceMgrFileDescriptorsLimit: nodeconfig.DefaultResourceMgrFileDescriptorsLimit,
+		WaitForEachPeerToConnect:        nodeconfig.DefaultWaitForEachPeerToConnect,
+		NoTransportSecurity:             nodeconfig.DefaultNoTransportSecurity,
+		NAT:                             nodeconfig.DefaultNAT,
+		UserAgent:                       nodeconfig.DefaultUserAgent,
+		DialTimeout:                     nodeconfig.DefaultDialTimeout,
+		Muxer:                           nodeconfig.DefaultMuxer,
+		NoRelay:                         nodeconfig.DefaultNoRelay,
 	},
 	HTTP: harmonyconfig.HttpConfig{
 		Enabled:        true,
@@ -175,6 +179,11 @@ var defaultConsensusConfig = harmonyconfig.ConsensusConfig{
 	AggregateSig: true,
 }
 
+var defaultLocalnetConfig = harmonyconfig.LocalnetConfig{
+	BlocksPerEpoch:   16,
+	BlocksPerEpochV2: 16,
+}
+
 var defaultPrometheusConfig = harmonyconfig.PrometheusConfig{
 	Enabled:    true,
 	IP:         "0.0.0.0",
@@ -252,14 +261,14 @@ var (
 		Downloader:           false,
 		StagedSync:           false,
 		StagedSyncCfg:        defaultStagedSyncConfig,
-		Concurrency:          2,
-		MinPeers:             2,
-		InitStreams:          2,
-		MaxAdvertiseWaitTime: 2, //minutes
-		DiscSoftLowCap:       2,
-		DiscHardLowCap:       2,
+		Concurrency:          3,
+		MinPeers:             3,
+		InitStreams:          3,
+		MaxAdvertiseWaitTime: 5, //minutes
+		DiscSoftLowCap:       3,
+		DiscHardLowCap:       3,
 		DiscHighCap:          1024,
-		DiscBatch:            4,
+		DiscBatch:            5,
 	}
 
 	defaultElseSyncConfig = harmonyconfig.SyncConfig{

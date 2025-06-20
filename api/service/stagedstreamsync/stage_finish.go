@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog"
 )
 
 type StageFinish struct {
@@ -11,7 +12,8 @@ type StageFinish struct {
 }
 
 type StageFinishCfg struct {
-	db kv.RwDB
+	db     kv.RwDB
+	logger zerolog.Logger
 }
 
 func NewStageFinish(cfg StageFinishCfg) *StageFinish {
@@ -20,9 +22,12 @@ func NewStageFinish(cfg StageFinishCfg) *StageFinish {
 	}
 }
 
-func NewStageFinishCfg(db kv.RwDB) StageFinishCfg {
+func NewStageFinishCfg(db kv.RwDB, logger zerolog.Logger) StageFinishCfg {
 	return StageFinishCfg{
 		db: db,
+		logger: logger.With().
+			Str("stage", "StageFinish").
+			Logger(),
 	}
 }
 
@@ -40,8 +45,8 @@ func (finish *StageFinish) Exec(ctx context.Context, firstCycle bool, invalidBlo
 	// TODO: prepare indices (useful for RPC) and finalize
 
 	// switch to Full Sync Mode if the states are synced
-	if s.state.status.statesSynced {
-		s.state.status.cycleSyncMode = FullSync
+	if s.state.status.IsStatesSynced() {
+		s.state.status.SetCycleSyncMode(FullSync)
 	}
 
 	if useInternalTx {
@@ -53,7 +58,7 @@ func (finish *StageFinish) Exec(ctx context.Context, firstCycle bool, invalidBlo
 	return nil
 }
 
-func (finish *StageFinish) clearBucket(ctx context.Context, tx kv.RwTx, isBeacon bool) error {
+func (finish *StageFinish) clearBucket(ctx context.Context, tx kv.RwTx, isBeaconShard bool) error {
 	useInternalTx := tx == nil
 	if useInternalTx {
 		var err error

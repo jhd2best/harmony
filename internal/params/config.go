@@ -71,6 +71,7 @@ var (
 		AllowlistEpoch:                        EpochTBD,
 		LeaderRotationInternalValidatorsEpoch: big.NewInt(2152), // 2024-10-31 13:02 UTC
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(2152), // 2024-10-31 13:02 UTC
+		LeaderRotationV2Epoch:                 EpochTBD,
 		FeeCollectEpoch:                       big.NewInt(1535), // 2023-07-20 05:51:07+00:00
 		ValidatorCodeFixEpoch:                 big.NewInt(1535), // 2023-07-20 05:51:07+00:00
 		HIP30Epoch:                            big.NewInt(1673), // 2023-11-02 17:30:00+00:00
@@ -80,6 +81,7 @@ var (
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
 		HIP32Epoch:                            big.NewInt(2152), // 2024-10-31 13:02 UTC
+		IsOneSecondEpoch:                      EpochTBD,
 	}
 
 	// TestnetChainConfig contains the chain parameters to run a node on the harmony test network.
@@ -119,6 +121,7 @@ var (
 		AllowlistEpoch:                        big.NewInt(2),
 		LeaderRotationInternalValidatorsEpoch: big.NewInt(3044),
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(3044),
+		LeaderRotationV2Epoch:                 EpochTBD,
 		FeeCollectEpoch:                       big.NewInt(1296), // 2023-04-28 07:14:20+00:00
 		ValidatorCodeFixEpoch:                 big.NewInt(1296), // 2023-04-28 07:14:20+00:00
 		HIP30Epoch:                            big.NewInt(2176), // 2023-10-12 10:00:00+00:00
@@ -127,6 +130,7 @@ var (
 		MaxRateEpoch:                          big.NewInt(2520), // 2023-12-16 12:17:14+00:00
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  big.NewInt(3044),
+		IsOneSecondEpoch:                      EpochTBD,
 	}
 	// PangaeaChainConfig contains the chain parameters for the Pangaea network.
 	// All features except for CrossLink are enabled at launch.
@@ -166,6 +170,7 @@ var (
 		AllowlistEpoch:                        EpochTBD,
 		LeaderRotationInternalValidatorsEpoch: EpochTBD,
 		LeaderRotationExternalValidatorsEpoch: EpochTBD,
+		LeaderRotationV2Epoch:                 EpochTBD,
 		FeeCollectEpoch:                       EpochTBD,
 		ValidatorCodeFixEpoch:                 EpochTBD,
 		HIP30Epoch:                            EpochTBD,
@@ -174,6 +179,7 @@ var (
 		MaxRateEpoch:                          EpochTBD,
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
+		IsOneSecondEpoch:                      EpochTBD,
 	}
 
 	// PartnerChainConfig contains the chain parameters for the Partner network.
@@ -214,6 +220,7 @@ var (
 		AllowlistEpoch:                        EpochTBD,
 		LeaderRotationInternalValidatorsEpoch: big.NewInt(144),
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(144),
+		LeaderRotationV2Epoch:                 EpochTBD,
 		FeeCollectEpoch:                       big.NewInt(5),
 		ValidatorCodeFixEpoch:                 big.NewInt(5),
 		HIP30Epoch:                            big.NewInt(7),
@@ -222,6 +229,7 @@ var (
 		MaxRateEpoch:                          EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
 		DevnetExternalEpoch:                   big.NewInt(144),
+		IsOneSecondEpoch:                      big.NewInt(17436),
 	}
 
 	// StressnetChainConfig contains the chain parameters for the Stress test network.
@@ -263,6 +271,7 @@ var (
 		FeeCollectEpoch:                       EpochTBD,
 		LeaderRotationInternalValidatorsEpoch: EpochTBD,
 		LeaderRotationExternalValidatorsEpoch: EpochTBD,
+		LeaderRotationV2Epoch:                 EpochTBD,
 		ValidatorCodeFixEpoch:                 EpochTBD,
 		HIP30Epoch:                            EpochTBD,
 		BlockGas30MEpoch:                      big.NewInt(0),
@@ -270,6 +279,7 @@ var (
 		MaxRateEpoch:                          EpochTBD,
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
+		IsOneSecondEpoch:                      EpochTBD,
 	}
 
 	// LocalnetChainConfig contains the chain parameters to run for local development.
@@ -307,8 +317,9 @@ var (
 		SlotsLimitedEpoch:                     EpochTBD, // epoch to enable HIP-16
 		CrossShardXferPrecompileEpoch:         big.NewInt(1),
 		AllowlistEpoch:                        EpochTBD,
-		LeaderRotationInternalValidatorsEpoch: big.NewInt(5),
-		LeaderRotationExternalValidatorsEpoch: big.NewInt(6),
+		LeaderRotationInternalValidatorsEpoch: big.NewInt(3),
+		LeaderRotationExternalValidatorsEpoch: big.NewInt(3),
+		LeaderRotationV2Epoch:                 EpochTBD,
 		FeeCollectEpoch:                       big.NewInt(2),
 		ValidatorCodeFixEpoch:                 big.NewInt(2),
 		HIP30Epoch:                            EpochTBD,
@@ -317,6 +328,7 @@ var (
 		MaxRateEpoch:                          EpochTBD,
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
+		IsOneSecondEpoch:                      big.NewInt(4),
 	}
 
 	// AllProtocolChanges ...
@@ -358,12 +370,14 @@ var (
 		big.NewInt(0),                      // AllowlistEpoch
 		big.NewInt(1),                      // LeaderRotationExternalNonBeaconLeaders
 		big.NewInt(1),                      // LeaderRotationExternalBeaconLeaders
+		big.NewInt(0),                      // LeaderRotationV2Epoch
 		big.NewInt(0),                      // FeeCollectEpoch
 		big.NewInt(0),                      // ValidatorCodeFixEpoch
 		big.NewInt(0),                      // BlockGas30M
 		big.NewInt(0),                      // BlockGas30M
 		big.NewInt(0),                      // MaxRateEpoch
 		big.NewInt(0),                      // MaxRateEpoch
+		big.NewInt(0),
 		big.NewInt(0),
 		big.NewInt(0),
 		big.NewInt(0),
@@ -408,6 +422,7 @@ var (
 		big.NewInt(0),        // AllowlistEpoch
 		big.NewInt(1),        // LeaderRotationExternalNonBeaconLeaders
 		big.NewInt(1),        // LeaderRotationExternalBeaconLeaders
+		big.NewInt(0),        // LeaderRotationV2Epoch
 		big.NewInt(0),        // FeeCollectEpoch
 		big.NewInt(0),        // ValidatorCodeFixEpoch
 		big.NewInt(0),        // HIP30Epoch
@@ -415,6 +430,7 @@ var (
 		big.NewInt(0),        // MaxRateEpoch
 		big.NewInt(0),        // MaxRateEpoch
 		big.NewInt(0),        // MaxRateEpoch
+		big.NewInt(0),
 		big.NewInt(0),
 		big.NewInt(0),
 	}
@@ -560,6 +576,8 @@ type ChainConfig struct {
 
 	LeaderRotationExternalValidatorsEpoch *big.Int `json:"leader-rotation-external-validators,omitempty"`
 
+	LeaderRotationV2Epoch *big.Int `json:"leader-rotation-v2-epoch,omitempty"`
+
 	// FeeCollectEpoch is the first epoch that enables txn fees to be collected into the community-managed account.
 	// It should >= StakingEpoch.
 	// Before StakingEpoch, txn fees are paid to miner/leader.
@@ -596,6 +614,8 @@ type ChainConfig struct {
 	// vote power feature  https://github.com/harmony-one/harmony/pull/4683
 	// if crosslink are not sent for an entire epoch signed and toSign will be 0 and 0. when that happen, next epoch there will no shard 1 validator elected in the committee.
 	HIP32Epoch *big.Int `json:"hip32-epoch,omitempty"`
+
+	IsOneSecondEpoch *big.Int `json:"is-one-second-epoch,omitempty"`
 }
 
 // String implements the fmt.Stringer interface.
@@ -721,6 +741,10 @@ func (c *ChainConfig) IsTwoSeconds(epoch *big.Int) bool {
 	return isForked(c.TwoSecondsEpoch, epoch)
 }
 
+func (c *ChainConfig) IsOneSecond(epoch *big.Int) bool {
+	return isForked(c.IsOneSecondEpoch, epoch)
+}
+
 // IsSixtyPercent determines whether it is the epoch to reduce internal voting power to 60%
 func (c *ChainConfig) IsSixtyPercent(epoch *big.Int) bool {
 	return isForked(c.SixtyPercentEpoch, epoch)
@@ -840,6 +864,10 @@ func (c *ChainConfig) IsBlockGas30M(epoch *big.Int) bool {
 
 func (c *ChainConfig) IsLeaderRotationExternalValidatorsAllowed(epoch *big.Int) bool {
 	return isForked(c.LeaderRotationExternalValidatorsEpoch, epoch)
+}
+
+func (c *ChainConfig) IsLeaderRotationV2Epoch(epoch *big.Int) bool {
+	return isForked(c.LeaderRotationV2Epoch, epoch)
 }
 
 // IsFeeCollectEpoch determines whether Txn Fees will be collected into the community-managed account.

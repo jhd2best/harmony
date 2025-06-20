@@ -11,11 +11,10 @@ import (
 type Protocol interface {
 	p2ptypes.LifeCycle
 
-	Specifier() string
 	Version() *version.Version
 	ProtoID() ProtoID
-	// ShardProtoID() ProtoID
-	IsBeaconNode() bool
+	ServiceID() string
+	IsBeaconValidator() bool
 	Match(id protocol.ID) bool
 	HandleStream(st libp2p_network.Stream)
 }

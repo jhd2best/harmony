@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"bytes"
-	"sync/atomic"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -17,6 +16,14 @@ import (
 	"github.com/harmony-one/harmony/shard"
 	"github.com/pkg/errors"
 )
+
+// UpdatePublicKeys updates the PublicKeys for
+// quorum on current subcommittee, protected by a mutex
+func (consensus *Consensus) UpdatePublicKeys(pubKeys, allowlist []bls.PublicKeyWrapper) int64 {
+	consensus.mutex.Lock()
+	defer consensus.mutex.Unlock()
+	return consensus.updatePublicKeys(pubKeys, allowlist)
+}
 
 func TestConstructAnnounceMessage(test *testing.T) {
 	leader := p2p.Peer{IP: "127.0.0.1", Port: "19999"}
@@ -37,7 +44,7 @@ func TestConstructAnnounceMessage(test *testing.T) {
 	if err != nil {
 		test.Fatalf("Cannot create consensus: %v", err)
 	}
-	consensus.blockHash = [32]byte{}
+	consensus.current.blockHash = [32]byte{}
 	pubKeyWrapper := bls.PublicKeyWrapper{Object: blsPriKey.GetPublicKey()}
 	pubKeyWrapper.Bytes.FromLibBLSPublicKey(pubKeyWrapper.Object)
 	priKeyWrapper := bls.PrivateKeyWrapper{Pri: blsPriKey, Pub: &pubKeyWrapper}
@@ -72,7 +79,7 @@ func TestConstructPreparedMessage(test *testing.T) {
 	}
 	consensus.resetState()
 	consensus.updateBitmaps()
-	consensus.blockHash = [32]byte{}
+	consensus.current.blockHash = [32]byte{}
 
 	message := "test string"
 	leaderKey := bls.SerializedPublicKey{}
@@ -85,7 +92,7 @@ func TestConstructPreparedMessage(test *testing.T) {
 		quorum.Prepare,
 		[]*bls.PublicKeyWrapper{&leaderKeyWrapper},
 		leaderPriKey.Sign(message),
-		common.BytesToHash(consensus.blockHash[:]),
+		common.BytesToHash(consensus.current.blockHash[:]),
 		consensus.BlockNum(),
 		consensus.GetCurBlockViewID(),
 	)
@@ -93,7 +100,7 @@ func TestConstructPreparedMessage(test *testing.T) {
 		quorum.Prepare,
 		[]*bls.PublicKeyWrapper{&validatorKeyWrapper},
 		validatorPriKey.Sign(message),
-		common.BytesToHash(consensus.blockHash[:]),
+		common.BytesToHash(consensus.current.blockHash[:]),
 		consensus.BlockNum(),
 		consensus.GetCurBlockViewID(),
 	); err != nil {
@@ -154,11 +161,11 @@ func TestConstructPrepareMessage(test *testing.T) {
 	consensus.UpdatePublicKeys([]bls.PublicKeyWrapper{pubKeyWrapper1, pubKeyWrapper2}, []bls.PublicKeyWrapper{})
 
 	consensus.SetCurBlockViewID(2)
-	consensus.blockHash = [32]byte{}
-	copy(consensus.blockHash[:], []byte("random"))
-	atomic.StoreUint64(&consensus.blockNum, 1000)
+	consensus.current.blockHash = [32]byte{}
+	copy(consensus.current.blockHash[:], []byte("random"))
+	consensus.setBlockNum(1000)
 
-	sig := priKeyWrapper1.Pri.SignHash(consensus.blockHash[:])
+	sig := priKeyWrapper1.Pri.SignHash(consensus.current.blockHash[:])
 	network, err := consensus.construct(msg_pb.MessageType_PREPARE, nil, []*bls.PrivateKeyWrapper{&priKeyWrapper1})
 
 	if err != nil {
@@ -167,7 +174,7 @@ func TestConstructPrepareMessage(test *testing.T) {
 	if network.MessageType != msg_pb.MessageType_PREPARE {
 		test.Errorf("MessageType is not populated correctly")
 	}
-	if network.FBFTMsg.BlockHash != consensus.blockHash {
+	if network.FBFTMsg.BlockHash != consensus.current.blockHash {
 		test.Errorf("BlockHash is not populated correctly")
 	}
 	if network.FBFTMsg.ViewID != consensus.GetCurBlockViewID() {
@@ -183,7 +190,7 @@ func TestConstructPrepareMessage(test *testing.T) {
 	keys := []*bls.PrivateKeyWrapper{&priKeyWrapper1, &priKeyWrapper2}
 	aggSig := bls_core.Sign{}
 	for _, priKey := range keys {
-		if s := priKey.Pri.SignHash(consensus.blockHash[:]); s != nil {
+		if s := priKey.Pri.SignHash(consensus.current.blockHash[:]); s != nil {
 			aggSig.Add(s)
 		}
 	}
@@ -195,7 +202,7 @@ func TestConstructPrepareMessage(test *testing.T) {
 	if network.MessageType != msg_pb.MessageType_PREPARE {
 		test.Errorf("MessageType is not populated correctly")
 	}
-	if network.FBFTMsg.BlockHash != consensus.blockHash {
+	if network.FBFTMsg.BlockHash != consensus.current.blockHash {
 		test.Errorf("BlockHash is not populated correctly")
 	}
 	if network.FBFTMsg.ViewID != consensus.GetCurBlockViewID() {
@@ -244,9 +251,9 @@ func TestConstructCommitMessage(test *testing.T) {
 	consensus.UpdatePublicKeys([]bls.PublicKeyWrapper{pubKeyWrapper1, pubKeyWrapper2}, []bls.PublicKeyWrapper{})
 
 	consensus.SetCurBlockViewID(2)
-	consensus.blockHash = [32]byte{}
-	copy(consensus.blockHash[:], []byte("random"))
-	atomic.StoreUint64(&consensus.blockNum, 1000)
+	consensus.current.blockHash = [32]byte{}
+	copy(consensus.current.blockHash[:], []byte("random"))
+	consensus.setBlockNum(1000)
 
 	sigPayload := []byte("payload")
 
@@ -259,7 +266,7 @@ func TestConstructCommitMessage(test *testing.T) {
 	if network.MessageType != msg_pb.MessageType_COMMIT {
 		test.Errorf("MessageType is not populated correctly")
 	}
-	if network.FBFTMsg.BlockHash != consensus.blockHash {
+	if network.FBFTMsg.BlockHash != consensus.current.blockHash {
 		test.Errorf("BlockHash is not populated correctly")
 	}
 	if network.FBFTMsg.ViewID != consensus.GetCurBlockViewID() {
@@ -287,7 +294,7 @@ func TestConstructCommitMessage(test *testing.T) {
 	if network.MessageType != msg_pb.MessageType_COMMIT {
 		test.Errorf("MessageType is not populated correctly")
 	}
-	if network.FBFTMsg.BlockHash != consensus.blockHash {
+	if network.FBFTMsg.BlockHash != consensus.current.blockHash {
 		test.Errorf("BlockHash is not populated correctly")
 	}
 	if network.FBFTMsg.ViewID != consensus.GetCurBlockViewID() {
@@ -326,7 +333,7 @@ func TestPopulateMessageFields(t *testing.T) {
 	}
 	consensus.SetCurBlockViewID(2)
 	blockHash := [32]byte{}
-	consensus.blockHash = blockHash
+	consensus.current.blockHash = blockHash
 
 	msg := &msg_pb.Message{
 		Request: &msg_pb.Message_Consensus{
@@ -336,7 +343,7 @@ func TestPopulateMessageFields(t *testing.T) {
 
 	keyBytes := bls.SerializedPublicKey{}
 	keyBytes.FromLibBLSPublicKey(blsPriKey.GetPublicKey())
-	consensusMsg := consensus.populateMessageFieldsAndSender(msg.GetConsensus(), consensus.blockHash[:],
+	consensusMsg := consensus.current.populateMessageFieldsAndSender(msg.GetConsensus(), consensus.current.blockHash[:],
 		keyBytes)
 
 	if consensusMsg.ViewId != 2 {
@@ -358,7 +365,7 @@ func TestPopulateMessageFields(t *testing.T) {
 		},
 	}
 	bitmap := []byte("random bitmap")
-	consensusMsg = consensus.populateMessageFieldsAndSendersBitmap(msg.GetConsensus(), consensus.blockHash[:],
+	consensusMsg = consensus.current.populateMessageFieldsAndSendersBitmap(msg.GetConsensus(), consensus.current.blockHash[:],
 		bitmap)
 
 	if consensusMsg.ViewId != 2 {

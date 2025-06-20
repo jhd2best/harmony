@@ -56,6 +56,9 @@ func generateRandomSlot() shard.Slot {
 }
 
 func TestCompute(t *testing.T) {
+	// Init localnet configs
+	shardingconfig.InitLocalnetConfig(16, 16)
+
 	expectedRoster := NewRoster(shard.BeaconChainShardID)
 	// Calculated when generated
 	expectedRoster.TotalEffectiveStake = totalStake
@@ -145,4 +148,12 @@ func compareStakedVoter(a, b *AccommodateHarmonyVote) bool {
 		a.EarningAccount == b.EarningAccount &&
 		a.OverallPercent.Equal(b.OverallPercent) &&
 		a.EffectiveStake.Equal(b.EffectiveStake)
+}
+
+func TestNewRound(t *testing.T) {
+	// Test NewRound
+	round := NewRound()
+	if round == nil {
+		t.Error("NewRound failed")
+	}
 }

@@ -77,11 +77,45 @@ func TestRequestManager_NewStream(t *testing.T) {
 
 	time.Sleep(defTestSleep)
 
-	ts.rm.lock.Lock()
-	if len(ts.rm.streams) != 4 || len(ts.rm.available) != 4 {
+	if ts.rm.streams.Length() != 4 || ts.rm.available.Length() != 4 {
 		t.Errorf("unexpected stream size")
 	}
-	ts.rm.lock.Unlock()
+}
+
+// TestRequestManager_NoStream_CancelRequests verifies that when all streams are removed,
+// the request is canceled after exceeding the NoStreamTimeout.
+func TestRequestManager_NoStream_CancelRequests(t *testing.T) {
+	delayF := makeDefaultDelayFunc(500 * time.Millisecond)
+	respF := makeDefaultResponseFunc()
+	ts := newTestSuite(delayF, respF, 3)
+	ts.Start()
+	defer ts.Close()
+
+	req := makeTestRequest(100)
+	ctx := context.Background()
+
+	// Simulate all streams being removed
+	ts.RemoveAllStreams()
+
+	// Perform async request
+	resC := ts.rm.doRequestAsync(ctx, req)
+
+	// Wait for the timeout threshold
+	time.Sleep(NoStreamTimeout + time.Second)
+
+	// Retrieve response
+	res := <-resC
+
+	// Validate results
+	if res.err == nil {
+		t.Fatalf("expected request to be canceled but got no error")
+	}
+	if res.err != ErrNoAvailableStream {
+		t.Errorf("unexpected error: %v", res.err)
+	}
+	if res.stID != "" {
+		t.Errorf("canceled request shouldn't have a stream ID")
+	}
 }
 
 // For request assigned to the stream being removed, the request will be rescheduled.
@@ -108,11 +142,9 @@ func TestRequestManager_RemoveStream(t *testing.T) {
 		t.Errorf("unexpected error: %v", errors.New("stream removed when doing request"))
 	}
 
-	ts.rm.lock.Lock()
-	if len(ts.rm.streams) != 2 || len(ts.rm.available) != 2 {
+	if ts.rm.streams.Length() != 2 || ts.rm.available.Length() != 2 {
 		t.Errorf("unexpected stream size")
 	}
-	ts.rm.lock.Unlock()
 }
 
 // stream delivers an unknown request ID
@@ -372,21 +404,21 @@ func TestRequestManager_Concurrency(t *testing.T) {
 func TestGenReqID(t *testing.T) {
 	retry := 100000
 	rm := &requestManager{
-		pendings: make(map[uint64]*request),
+		pendings: sttypes.NewSafeMap[uint64, *request](),
 	}
 
 	for i := 0; i != retry; i++ {
 		rid := rm.genReqID()
-		if _, ok := rm.pendings[rid]; ok {
+		if _, ok := rm.pendings.Get(rid); ok {
 			t.Errorf("rid collision")
 		}
-		rm.pendings[rid] = nil
+		rm.pendings.Set(rid, nil)
 	}
 }
 
 func TestCheckStreamUpdates(t *testing.T) {
 	tests := []struct {
-		exists            map[sttypes.StreamID]*stream
+		exists            *sttypes.SafeMap[sttypes.StreamID, *stream]
 		targets           []sttypes.Stream
 		expAddedIndexes   []int
 		expRemovedIndexes []int
@@ -518,12 +550,20 @@ func (ts *testSuite) Close() {
 	ts.cancel()
 }
 
-func (ts *testSuite) pickOneOccupiedStream() sttypes.StreamID {
-	ts.rm.lock.Lock()
-	defer ts.rm.lock.Unlock()
+func (ts *testSuite) RemoveAllStreams() {
+	streams := ts.sm.GetStreams()
+	for _, st := range streams {
+		ts.sm.rmStream(st.ID())
+	}
+}
 
-	for _, req := range ts.rm.pendings {
-		return req.owner.ID()
+func (ts *testSuite) pickOneOccupiedStream() sttypes.StreamID {
+	IDs := ts.rm.pendings.Keys()
+	for _, id := range IDs {
+		req, _ := ts.rm.pendings.Get(id)
+		if req.owner != nil {
+			return req.owner.ID()
+		}
 	}
 	return ""
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/harmony-one/harmony/staking/slash"
 	"github.com/harmony-one/harmony/test/helpers"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConsensusInitialization(t *testing.T) {
@@ -22,7 +23,7 @@ func TestConsensusInitialization(t *testing.T) {
 	assert.NoError(t, err)
 
 	messageSender := &MessageSender{host: host, retryTimes: int(phaseDuration.Seconds()) / RetryIntervalInSec}
-	state := NewState(Normal)
+	state := NewState(Normal, consensus.ShardID)
 
 	timeouts := createTimeout()
 	expectedTimeouts := make(map[TimeoutType]time.Duration)
@@ -36,7 +37,7 @@ func TestConsensusInitialization(t *testing.T) {
 	// FBFTLog
 	assert.NotNil(t, consensus.FBFTLog())
 
-	assert.Equal(t, FBFTAnnounce, consensus.phase)
+	assert.Equal(t, FBFTAnnounce, consensus.getConsensusPhase())
 
 	// State / consensus.current
 	assert.Equal(t, state.mode, consensus.current.mode)
@@ -87,4 +88,16 @@ func GenerateConsensusForTesting() (p2p.Host, multibls.PrivateKeys, *Consensus, 
 	}
 
 	return host, multiBLSPrivateKey, consensus, decider, nil
+}
+
+func TestFinalCommitDisablesTransition(t *testing.T) {
+	_, _, consensus, _, err := GenerateConsensusForTesting()
+	require.NoError(t, err)
+
+	require.False(t, consensus.transitions.finalCommit)
+
+	// this method should set consensus.transitions.finalCommit to false even it panics.
+	consensus.finalCommit(0, 1, false)
+
+	require.False(t, consensus.transitions.finalCommit)
 }

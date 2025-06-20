@@ -18,6 +18,7 @@ import (
 	"github.com/harmony-one/harmony/p2p"
 	"github.com/harmony-one/harmony/p2p/stream/common/streammanager"
 	"github.com/harmony-one/harmony/p2p/stream/protocols/sync"
+	"github.com/harmony-one/harmony/shard"
 )
 
 type (
@@ -44,17 +45,19 @@ type (
 )
 
 // NewDownloader creates a new downloader
-func NewDownloader(host p2p.Host, bc core.BlockChain, isBeaconNode bool, config Config) *Downloader {
+func NewDownloader(host p2p.Host, bc core.BlockChain, nodeConfig *nodeconfig.ConfigType, isBeaconNode bool, config Config) *Downloader {
 	config.fixValues()
 
 	sp := sync.NewProtocol(sync.Config{
-		Chain:      bc,
-		Host:       host.GetP2PHost(),
-		Discovery:  host.GetDiscovery(),
-		ShardID:    nodeconfig.ShardID(bc.ShardID()),
-		Network:    config.Network,
-		BeaconNode: isBeaconNode,
-
+		Chain:        bc,
+		Host:         host.GetP2PHost(),
+		Discovery:    host.GetDiscovery(),
+		ShardID:      nodeconfig.ShardID(bc.ShardID()),
+		Network:      config.Network,
+		BeaconNode:   isBeaconNode,
+		Validator:    nodeConfig.Role() == nodeconfig.Validator,
+		Explorer:     nodeConfig.Role() == nodeconfig.ExplorerNode,
+		EpochChain:   !isBeaconNode && bc.ShardID() == shard.BeaconChainShardID,
 		SmSoftLowCap: config.SmSoftLowCap,
 		SmHardLowCap: config.SmHardLowCap,
 		SmHiCap:      config.SmHiCap,

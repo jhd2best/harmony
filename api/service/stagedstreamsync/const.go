@@ -14,10 +14,10 @@ const (
 	BlockByHashesUpperCap int = 10 // number of get blocks by hashes upper cap
 	BlockByHashesLowerCap int = 3  // number of get blocks by hashes lower cap
 
-	LastMileBlocksThreshold int    = 10
-	SyncLoopBatchSize       uint32 = 30  // maximum size for one query of block hashes
-	VerifyHeaderBatchSize   uint64 = 100 // block chain header verification batch size (not used for now)
-	LastMileBlocksSize             = 50
+	SyncLoopBatchSize     uint32 = 30  // maximum size for one query of block hashes
+	VerifyHeaderBatchSize uint64 = 100 // block chain header verification batch size (not used for now)
+
+	ShortRangeThreshold uint64 = 10
 
 	// SoftQueueCap is the soft cap of size in resultQueue. When the queue size is larger than this limit,
 	// no more request will be assigned to workers to wait for InsertChain to finish.
@@ -53,6 +53,18 @@ const (
 	FastSync                 // Download all blocks and states
 	SnapSync                 // Download the chain and the state via compact snapshots
 )
+
+func (sm SyncMode) String() string {
+	switch sm {
+	case FullSync:
+		return "Full Sync"
+	case FastSync:
+		return "Fast Sync"
+	case SnapSync:
+		return "Snap Sync"
+	}
+	return "unknown"
+}
 
 type (
 	// Config is the downloader config
