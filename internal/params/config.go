@@ -178,7 +178,7 @@ var (
 		RejectShard0CrossLinkEpoch:            big.NewInt(7385),
 		CXMerkleProofReplayFixEpoch:           big.NewInt(7385),
 		BLSProofBindEpoch:                     big.NewInt(7420),
-		BloomEpoch:                            EpochTBD,
+		BloomEpoch:                            big.NewInt(7420),
 	}
 	// PangaeaChainConfig contains the chain parameters for the Pangaea network.
 	// All features except for CrossLink are enabled at launch.
@@ -324,7 +324,7 @@ var (
 		ShardStateValidationEpoch:             big.NewInt(52650),
 		SlashBallotSignerFixEpoch:             big.NewInt(52650),
 		VerifyBeaconHeaderSlashEpoch:          big.NewInt(53000),
-		BloomEpoch:                            EpochTBD,
+		BloomEpoch:                            big.NewInt(53508),
 	}
 
 	// StressnetChainConfig contains the chain parameters for the Stress test network.
