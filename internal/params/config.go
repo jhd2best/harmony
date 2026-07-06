@@ -152,12 +152,12 @@ var (
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(3044),
 		HIP32Epoch:                            big.NewInt(0),
 		AllowlistEpoch:                        big.NewInt(2),
-		LeaderRotationV2Epoch:                 big.NewInt(7385),
+		LeaderRotationV2Epoch:                 big.NewInt(7420),
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  big.NewInt(3044),
 		TimestampValidationEpoch:              big.NewInt(7170),
 		IsOneSecondEpoch:                      EpochTBD,
-		EIP2537PrecompileEpoch:                big.NewInt(7385),
+		EIP2537PrecompileEpoch:                big.NewInt(7420),
 		EIP1153TransientStorageEpoch:          big.NewInt(6280),
 		EIP6780Epoch:                          big.NewInt(7178),
 		PragueEpoch:                           EpochTBD,
@@ -177,7 +177,7 @@ var (
 		VerifyBeaconHeaderSlashEpoch:          big.NewInt(7385),
 		RejectShard0CrossLinkEpoch:            big.NewInt(7385),
 		CXMerkleProofReplayFixEpoch:           big.NewInt(7385),
-		BLSProofBindEpoch:                     big.NewInt(7385),
+		BLSProofBindEpoch:                     big.NewInt(7420),
 		BloomEpoch:                            EpochTBD,
 	}
 	// PangaeaChainConfig contains the chain parameters for the Pangaea network.
