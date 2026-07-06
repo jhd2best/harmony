@@ -48,7 +48,7 @@ var (
 		ReceiptLogEpoch:                       big.NewInt(101),
 		PreStakingEpoch:                       big.NewInt(185),
 		CrossLinkEpoch:                        big.NewInt(186),
-		RejectShard0CrossLinkEpoch:            EpochTBD, // mainnet activation TBD (consensus hardfork)
+		RejectShard0CrossLinkEpoch:            EpochTBD,
 		StakingEpoch:                          big.NewInt(186),
 		QuickUnlockEpoch:                      big.NewInt(191),
 		FiveSecondsEpoch:                      big.NewInt(230),
@@ -104,6 +104,7 @@ var (
 		BLSProofBindEpoch:                     EpochTBD,
 		SlashBallotSignerFixEpoch:             EpochTBD,
 		VerifyBeaconHeaderSlashEpoch:          EpochTBD,
+		BloomEpoch:                            EpochTBD,
 	}
 
 	// TestnetChainConfig contains the chain parameters to run a node on the harmony test network.
@@ -151,12 +152,12 @@ var (
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(3044),
 		HIP32Epoch:                            big.NewInt(0),
 		AllowlistEpoch:                        big.NewInt(2),
-		LeaderRotationV2Epoch:                 EpochTBD,
+		LeaderRotationV2Epoch:                 big.NewInt(7420),
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  big.NewInt(3044),
 		TimestampValidationEpoch:              big.NewInt(7170),
 		IsOneSecondEpoch:                      EpochTBD,
-		EIP2537PrecompileEpoch:                EpochTBD,
+		EIP2537PrecompileEpoch:                big.NewInt(7420),
 		EIP1153TransientStorageEpoch:          big.NewInt(6280),
 		EIP6780Epoch:                          big.NewInt(7178),
 		PragueEpoch:                           EpochTBD,
@@ -176,7 +177,8 @@ var (
 		VerifyBeaconHeaderSlashEpoch:          big.NewInt(7385),
 		RejectShard0CrossLinkEpoch:            big.NewInt(7385),
 		CXMerkleProofReplayFixEpoch:           big.NewInt(7385),
-		BLSProofBindEpoch:                     EpochTBD,
+		BLSProofBindEpoch:                     big.NewInt(7420),
+		BloomEpoch:                            big.NewInt(7420),
 	}
 	// PangaeaChainConfig contains the chain parameters for the Pangaea network.
 	// All features except for CrossLink are enabled at launch.
@@ -248,6 +250,7 @@ var (
 		BLSProofBindEpoch:                     EpochTBD,
 		SlashBallotSignerFixEpoch:             EpochTBD,
 		VerifyBeaconHeaderSlashEpoch:          EpochTBD,
+		BloomEpoch:                            EpochTBD,
 	}
 
 	// PartnerChainConfig contains the chain parameters for the Partner network.
@@ -295,11 +298,11 @@ var (
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(144),
 		HIP32Epoch:                            EpochTBD,
 		AllowlistEpoch:                        EpochTBD,
-		LeaderRotationV2Epoch:                 EpochTBD,
+		LeaderRotationV2Epoch:                 big.NewInt(53508),
 		DevnetExternalEpoch:                   big.NewInt(144),
 		TestnetExternalEpoch:                  EpochTBD,
 		IsOneSecondEpoch:                      big.NewInt(17436),
-		EIP2537PrecompileEpoch:                EpochTBD,
+		EIP2537PrecompileEpoch:                big.NewInt(53508),
 		EIP1153TransientStorageEpoch:          big.NewInt(35626),
 		TimestampValidationEpoch:              big.NewInt(47190),
 		EIP7939CLZEpoch:                       big.NewInt(35626),
@@ -316,11 +319,12 @@ var (
 		SlashExternalStakeDenomFixEpoch:       big.NewInt(52050),
 		RejectDuplicateSlashEvidenceEpoch:     big.NewInt(52050),
 		SlashGroupOrderFixEpoch:               big.NewInt(52050),
-		BLSProofBindEpoch:                     EpochTBD,
+		BLSProofBindEpoch:                     big.NewInt(53508),
 		CXReceiptStateRollbackEpoch:           big.NewInt(52650),
 		ShardStateValidationEpoch:             big.NewInt(52650),
 		SlashBallotSignerFixEpoch:             big.NewInt(52650),
 		VerifyBeaconHeaderSlashEpoch:          big.NewInt(53000),
+		BloomEpoch:                            big.NewInt(53508),
 	}
 
 	// StressnetChainConfig contains the chain parameters for the Stress test network.
@@ -393,6 +397,7 @@ var (
 		BLSProofBindEpoch:                     EpochTBD,
 		SlashBallotSignerFixEpoch:             EpochTBD,
 		VerifyBeaconHeaderSlashEpoch:          EpochTBD,
+		BloomEpoch:                            EpochTBD,
 	}
 
 	// LocalnetChainConfig contains the chain parameters to run for local development.
@@ -464,6 +469,7 @@ var (
 		BLSProofBindEpoch:                     EpochTBD,
 		SlashBallotSignerFixEpoch:             big.NewInt(2),
 		VerifyBeaconHeaderSlashEpoch:          EpochTBD,
+		BloomEpoch:                            EpochTBD,
 	}
 
 	// AllProtocolChanges ...
@@ -538,6 +544,7 @@ var (
 		big.NewInt(0),                      // BLSProofBindEpoch
 		big.NewInt(1),                      // SlashBallotSignerFixEpoch
 		big.NewInt(1),                      // VerifyBeaconHeaderSlashEpoch
+		big.NewInt(1),                      // BloomEpoch
 	}
 
 	// TestChainConfig ...
@@ -609,9 +616,10 @@ var (
 		big.NewInt(0),        // SlashExternalStakeDenomFixEpoch
 		big.NewInt(0),        // RejectDuplicateSlashEvidenceEpoch
 		big.NewInt(1),        // SlashGroupOrderFixEpoch
-		EpochTBD,             // BLSProofBindEpoch
+		big.NewInt(1),        // BLSProofBindEpoch
 		big.NewInt(1),        // SlashBallotSignerFixEpoch
 		big.NewInt(1),        // VerifyBeaconHeaderSlashEpoch
+		big.NewInt(1),        // BloomEpoch
 	}
 
 	// TestRules ...
@@ -868,6 +876,11 @@ type ChainConfig struct {
 	// records are validated before block finalization. Until set to a concrete
 	// epoch on a network, EpochTBD leaves the rule inactive there.
 	VerifyBeaconHeaderSlashEpoch *big.Int `json:"verify-beacon-header-slash-epoch,omitempty"`
+
+	// BloomEpoch is the epoch of the Bloom hardfork. Bloom-bundled features also
+	// have individual activation epochs; each feature is active once the chain
+	// reaches the earlier of BloomEpoch and that feature's epoch.
+	BloomEpoch *big.Int `json:"bloom-epoch,omitempty"`
 }
 
 // String implements the fmt.Stringer interface.
@@ -983,13 +996,13 @@ func (c *ChainConfig) HasCrossTxFields(epoch *big.Int) bool {
 
 // IsCXMerkleProofReplayFixEpoch determines whether replay-fix checks are enabled.
 func (c *ChainConfig) IsCXMerkleProofReplayFixEpoch(epoch *big.Int) bool {
-	return isForked(c.CXMerkleProofReplayFixEpoch, epoch)
+	return c.isBloomFeatureActive(c.CXMerkleProofReplayFixEpoch, epoch)
 }
 
 // IsCXReceiptStateRollback returns whether EVM frame reverts also roll back
 // cross-shard receipts created by the cross-shard precompile.
 func (c *ChainConfig) IsCXReceiptStateRollback(epoch *big.Int) bool {
-	return isForked(c.CXReceiptStateRollbackEpoch, epoch)
+	return c.isBloomFeatureActive(c.CXReceiptStateRollbackEpoch, epoch)
 }
 
 // IsEthCompatible determines whether it is ethereum compatible epoch
@@ -1028,24 +1041,24 @@ func (c *ChainConfig) IsOneSecond(epoch *big.Int) bool {
 
 // IsTimestampValidation determines whether timestamp hardfork checks are enabled.
 func (c *ChainConfig) IsTimestampValidation(epoch *big.Int) bool {
-	return isForked(c.TimestampValidationEpoch, epoch)
+	return c.isBloomFeatureActive(c.TimestampValidationEpoch, epoch)
 }
 
 // IsSlashExternalStakeDenomFix returns whether double-sign slashing uses snapshot self-stake
 // for the external delegator slash denominator.
 func (c *ChainConfig) IsSlashExternalStakeDenomFix(epoch *big.Int) bool {
-	return isForked(c.SlashExternalStakeDenomFixEpoch, epoch)
+	return c.isBloomFeatureActive(c.SlashExternalStakeDenomFixEpoch, epoch)
 }
 
 // IsDuplicateCrossLinkRejection determines whether duplicate cross-links in a
 // beacon block header are rejected.
 func (c *ChainConfig) IsDuplicateCrossLinkRejection(epoch *big.Int) bool {
-	return isForked(c.DuplicateCrossLinkEpoch, epoch)
+	return c.isBloomFeatureActive(c.DuplicateCrossLinkEpoch, epoch)
 }
 
 // IsShardStateValidation returns whether additional shard state header validation is active.
 func (c *ChainConfig) IsShardStateValidation(epoch *big.Int) bool {
-	return isForked(c.ShardStateValidationEpoch, epoch)
+	return c.isBloomFeatureActive(c.ShardStateValidationEpoch, epoch)
 }
 
 // IsSixtyPercent determines whether it is the epoch to reduce internal voting power to 60%
@@ -1106,7 +1119,7 @@ func (c *ChainConfig) IsCrossLink(epoch *big.Int) bool {
 // IsRejectShard0CrossLink determines whether shard-0 cross-links in beacon
 // header CrossLinks are rejected by consensus.
 func (c *ChainConfig) IsRejectShard0CrossLink(epoch *big.Int) bool {
-	return isForked(c.RejectShard0CrossLinkEpoch, epoch)
+	return c.isBloomFeatureActive(c.RejectShard0CrossLinkEpoch, epoch)
 }
 
 // IsS3 returns whether epoch is either equal to the S3 fork epoch or greater.
@@ -1156,49 +1169,49 @@ func (c *ChainConfig) IsCrossShardXferPrecompile(epoch *big.Int) bool {
 // IsEIP2537Precompiles determines whether EIP-2537
 // precompiles are available in the EVM
 func (c *ChainConfig) IsEIP2537Precompile(epoch *big.Int) bool {
-	return isForked(c.EIP2537PrecompileEpoch, epoch)
+	return c.isBloomFeatureActive(c.EIP2537PrecompileEpoch, epoch)
 }
 
 // IsEIP1153TransientStorage determines whether EIP-1153 transient storage is available in the EVM
 func (c *ChainConfig) IsEIP1153TransientStorage(epoch *big.Int) bool {
-	return isForked(c.EIP1153TransientStorageEpoch, epoch)
+	return c.isBloomFeatureActive(c.EIP1153TransientStorageEpoch, epoch)
 }
 
 // IsEIP7939CLZ determines whether EIP-7939 CLZ opcode is available in the EVM
 func (c *ChainConfig) IsEIP7939CLZ(epoch *big.Int) bool {
-	return isForked(c.EIP7939CLZEpoch, epoch)
+	return c.isBloomFeatureActive(c.EIP7939CLZEpoch, epoch)
 }
 
 // IsEIP5656Mcopy determines whether EIP-5656 MCOPY opcode is available in the EVM
 func (c *ChainConfig) IsEIP5656Mcopy(epoch *big.Int) bool {
-	return isForked(c.EIP5656McopyEpoch, epoch)
+	return c.isBloomFeatureActive(c.EIP5656McopyEpoch, epoch)
 }
 
 // IsEIP3855 determines whether EIP-3855 (PUSH0 opcode)
 // is available in the EVM
 func (c *ChainConfig) IsEIP3855(epoch *big.Int) bool {
-	return isForked(c.EIP3855Epoch, epoch)
+	return c.isBloomFeatureActive(c.EIP3855Epoch, epoch)
 }
 
 // IsEIP6780 determines whether EIP-6780 (deactivate SELFDESTRUCT) is active
 func (c *ChainConfig) IsEIP6780(epoch *big.Int) bool {
-	return isForked(c.EIP6780Epoch, epoch)
+	return c.isBloomFeatureActive(c.EIP6780Epoch, epoch)
 }
 
 // IsEIP3860 determines whether EIP-3860 (Limit and Meter Initcode) is enabled
 func (c *ChainConfig) IsEIP3860(epoch *big.Int) bool {
-	return isForked(c.EIP3860Epoch, epoch)
+	return c.isBloomFeatureActive(c.EIP3860Epoch, epoch)
 }
 
 // IsEIP8024 determines whether EIP-8024 (DUPN, SWAPN, EXCHANGE) is available in the EVM
 func (c *ChainConfig) IsEIP8024(epoch *big.Int) bool {
-	return isForked(c.EIP8024Epoch, epoch)
+	return c.isBloomFeatureActive(c.EIP8024Epoch, epoch)
 }
 
 // IsRejectDuplicateSlashEvidence returns whether stricter beacon header slash
 // payload checks are active for the given epoch.
 func (c *ChainConfig) IsRejectDuplicateSlashEvidence(epoch *big.Int) bool {
-	return isForked(c.RejectDuplicateSlashEvidenceEpoch, epoch)
+	return c.isBloomFeatureActive(c.RejectDuplicateSlashEvidenceEpoch, epoch)
 }
 
 // IsChainIdFix returns whether epoch is either equal to the ChainId Fix fork epoch or greater.
@@ -1208,7 +1221,7 @@ func (c *ChainConfig) IsChainIdFix(epoch *big.Int) bool {
 
 // IsAllowlistEpoch determines whether IsAllowlist of HIP18 is enabled
 func (c *ChainConfig) IsAllowlistEpoch(epoch *big.Int) bool {
-	return isForked(c.AllowlistEpoch, epoch)
+	return c.isBloomFeatureActive(c.AllowlistEpoch, epoch)
 }
 
 func (c *ChainConfig) IsLeaderRotationInternalValidators(epoch *big.Int) bool {
@@ -1224,7 +1237,7 @@ func (c *ChainConfig) IsLeaderRotationExternalValidatorsAllowed(epoch *big.Int) 
 }
 
 func (c *ChainConfig) IsLeaderRotationV2Epoch(epoch *big.Int) bool {
-	return isForked(c.LeaderRotationV2Epoch, epoch)
+	return c.isBloomFeatureActive(c.LeaderRotationV2Epoch, epoch)
 }
 
 // IsFeeCollectEpoch determines whether Txn Fees will be collected into the community-managed account.
@@ -1237,29 +1250,29 @@ func (c *ChainConfig) IsValidatorCodeFix(epoch *big.Int) bool {
 }
 
 func (c *ChainConfig) IsSlashGroupOrderFix(epoch *big.Int) bool {
-	return isForked(c.SlashGroupOrderFixEpoch, epoch)
+	return c.isBloomFeatureActive(c.SlashGroupOrderFixEpoch, epoch)
 }
 
 // IsValidatorWrapperAddressBind requires wrapper.Address to match the loading account.
 func (c *ChainConfig) IsValidatorWrapperAddressBind(epoch *big.Int) bool {
-	return isForked(c.ValidatorWrapperAddressBindEpoch, epoch)
+	return c.isBloomFeatureActive(c.ValidatorWrapperAddressBindEpoch, epoch)
 }
 
 // IsBLSProofBind requires BLS proof-of-possession to be bound to validator address.
 func (c *ChainConfig) IsBLSProofBind(epoch *big.Int) bool {
-	return isForked(c.BLSProofBindEpoch, epoch)
+	return c.isBloomFeatureActive(c.BLSProofBindEpoch, epoch)
 }
 
 // IsSlashBallotSignerFix returns whether slash verification uses stricter ballot
 // signer key rules during double-sign evidence checks.
 func (c *ChainConfig) IsSlashBallotSignerFix(epoch *big.Int) bool {
-	return isForked(c.SlashBallotSignerFixEpoch, epoch)
+	return c.isBloomFeatureActive(c.SlashBallotSignerFixEpoch, epoch)
 }
 
 // IsVerifyBeaconHeaderSlash returns whether beacon header slash records must
 // pass validation before block finalization for the given epoch.
 func (c *ChainConfig) IsVerifyBeaconHeaderSlash(epoch *big.Int) bool {
-	return isForked(c.VerifyBeaconHeaderSlashEpoch, epoch)
+	return c.isBloomFeatureActive(c.VerifyBeaconHeaderSlashEpoch, epoch)
 }
 
 func (c *ChainConfig) IsHIP32(epoch *big.Int) bool {
@@ -1336,6 +1349,30 @@ func isForked(s, epoch *big.Int) bool {
 		return false
 	}
 	return s.Cmp(epoch) <= 0
+}
+
+// earliestActivation returns the earlier of two fork activation epochs.
+func earliestActivation(a, b *big.Int) *big.Int {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	if a.Cmp(b) <= 0 {
+		return a
+	}
+	return b
+}
+
+// isBloomFeatureActive reports whether a Bloom-bundled feature is active at epoch.
+func (c *ChainConfig) isBloomFeatureActive(featureEpoch, epoch *big.Int) bool {
+	return isForked(earliestActivation(c.BloomEpoch, featureEpoch), epoch)
+}
+
+// IsBloom returns whether the Bloom hardfork is active at the given epoch.
+func (c *ChainConfig) IsBloom(epoch *big.Int) bool {
+	return isForked(c.BloomEpoch, epoch)
 }
 
 // Rules wraps ChainConfig and is merely syntactic sugar or can be used for functions
