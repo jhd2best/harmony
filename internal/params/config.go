@@ -544,7 +544,7 @@ var (
 		big.NewInt(0),                      // BLSProofBindEpoch
 		big.NewInt(1),                      // SlashBallotSignerFixEpoch
 		big.NewInt(1),                      // VerifyBeaconHeaderSlashEpoch
-		EpochTBD,                           // BloomEpoch
+		big.NewInt(1),                      // BloomEpoch
 	}
 
 	// TestChainConfig ...
@@ -616,10 +616,10 @@ var (
 		big.NewInt(0),        // SlashExternalStakeDenomFixEpoch
 		big.NewInt(0),        // RejectDuplicateSlashEvidenceEpoch
 		big.NewInt(1),        // SlashGroupOrderFixEpoch
-		EpochTBD,             // BLSProofBindEpoch
+		big.NewInt(1),        // BLSProofBindEpoch
 		big.NewInt(1),        // SlashBallotSignerFixEpoch
 		big.NewInt(1),        // VerifyBeaconHeaderSlashEpoch
-		EpochTBD,             // BloomEpoch
+		big.NewInt(1),        // BloomEpoch
 	}
 
 	// TestRules ...
