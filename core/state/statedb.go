@@ -118,6 +118,9 @@ type DB struct {
 	// Transient storage
 	transientStorage transientStorage
 
+	// validatorWrapperAddressBind requires wrapper.Address == account on load/store.
+	validatorWrapperAddressBind bool
+
 	// Journal of state modifications. This is the backbone of
 	// Snapshot and RevertToSnapshot.
 	journal        *journal
@@ -525,6 +528,18 @@ func (db *DB) Suicide(addr common.Address) bool {
 	return true
 }
 
+// Selfdestruct6780 implements EIP-6780: only self-destructs if the contract was created in the current transaction.
+func (db *DB) Selfdestruct6780(addr common.Address) {
+	stateObject := db.getStateObject(addr)
+	if stateObject == nil {
+		return
+	}
+
+	if stateObject.created {
+		db.Suicide(addr)
+	}
+}
+
 // SetTransientState sets transient storage for a given account. It
 // adds the change to the journal so that it can be rolled back
 // to its previous value if there is a revert.
@@ -693,6 +708,9 @@ func (db *DB) createObject(addr common.Address) (newobj, prev *Object) {
 	} else {
 		db.journal.append(resetObjectChange{prev: prev, prevdestruct: prevdestruct})
 	}
+
+	newobj.created = true
+
 	db.setStateObject(newobj)
 	if prev != nil && !prev.deleted {
 		return newobj, prev
@@ -934,6 +952,7 @@ func (db *DB) Finalise(deleteEmptyObjects bool) {
 		} else {
 			obj.finalise(true) // Prefetch slots in the background
 		}
+		obj.created = false
 		db.stateObjectsPending[addr] = struct{}{}
 		db.stateObjectsDirty[addr] = struct{}{}
 
@@ -1201,6 +1220,10 @@ func (s *DB) Prepare(rules params.Rules, sender common.Address, dst *common.Addr
 	}
 	// Reset transient storage at the beginning of transaction execution
 	s.transientStorage = newTransientStorage()
+	// Reset created flags for all state objects at the beginning of transaction execution (EIP-6780)
+	for _, obj := range s.stateObjects {
+		obj.created = false
+	}
 }
 
 // AddAddressToAccessList adds the given address to the access list
@@ -1256,6 +1279,24 @@ var (
 	ErrAddressNotPresent = errors.New("address not present in state")
 )
 
+// SetValidatorWrapperAddressBind enables binding checks for validator wrapper load/store.
+func (db *DB) SetValidatorWrapperAddressBind(enabled bool) {
+	db.validatorWrapperAddressBind = enabled
+}
+
+// CachedValidatorAddresses returns validator addresses loaded or updated in the
+// current state transition. Used to detect duplicate BLS keys among validators
+// created earlier in the same block.
+func (db *DB) CachedValidatorAddresses() []common.Address {
+	addrs := make([]common.Address, 0, len(db.stateValidators))
+	for addr := range db.stateValidators {
+		if db.IsValidator(addr) {
+			addrs = append(addrs, addr)
+		}
+	}
+	return addrs
+}
+
 // ValidatorWrapper retrieves the existing validator in the cache, if sendOriginal
 // else it will return a copy of the wrapper - which needs to be explicitly committed
 // with UpdateValidatorWrapper.
@@ -1290,6 +1331,9 @@ func (db *DB) ValidatorWrapper(
 			common2.MustAddressToBech32(addr),
 		)
 	}
+	if db.validatorWrapperAddressBind && val.Address != addr {
+		return nil, stk.ErrValidatorWrapperAddressMismatch
+	}
 	// populate cache because the validator is not in it
 	db.stateValidators[addr] = &val
 	return copyValidatorWrapperIfNeeded(&val, sendOriginal, copyDelegations), nil
@@ -1318,6 +1362,9 @@ func copyValidatorWrapperIfNeeded(
 func (db *DB) UpdateValidatorWrapper(
 	addr common.Address, val *stk.ValidatorWrapper,
 ) error {
+	if db.validatorWrapperAddressBind && val.Address != addr {
+		return stk.ErrValidatorWrapperAddressMismatch
+	}
 	if err := val.SanityCheck(); err != nil {
 		return err
 	}

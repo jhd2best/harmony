@@ -13,8 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	reward "github.com/harmony-one/harmony/staking/reward"
-
 	ethCommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
@@ -50,6 +48,7 @@ import (
 	"github.com/harmony-one/harmony/p2p"
 	rpc_common "github.com/harmony-one/harmony/rpc/harmony/common"
 	"github.com/harmony-one/harmony/shard"
+	reward "github.com/harmony-one/harmony/staking/reward"
 	"github.com/harmony-one/harmony/webhooks"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -246,7 +245,6 @@ func setupNodeAndRun(hc harmonyconfig.HarmonyConfig) {
 	nodeconfig.GetDefaultConfig().IsOffline = nodeConfig.IsOffline
 	nodeconfig.GetDefaultConfig().SyncClient = nodeConfig.SyncClient
 
-	// Check NTP and time accuracy
 	// It skips the time accuracy check on the localnet since all nodes are running on the same machine
 	if hc.Network.NetworkType != nodeconfig.Localnet {
 		clockAccuracyResp, err := ntp.CheckLocalTimeAccurate(nodeConfig.NtpServer)

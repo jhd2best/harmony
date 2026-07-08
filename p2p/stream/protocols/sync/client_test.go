@@ -807,6 +807,10 @@ func (sm *testStreamManager) SubscribeRemoveStreamEvent(chan<- streammanager.Evt
 	return nil
 }
 
+func (sm *testStreamManager) SetEnoughStreamsCallback(callback func()) {
+	// No-op for test implementation
+}
+
 func (sm *testStreamManager) NewStream(stream sttypes.Stream) error {
 	stid := stream.ID()
 	for _, id := range sm.streamIDs {
@@ -825,6 +829,11 @@ func (sm *testStreamManager) RemoveStream(stID sttypes.StreamID, reason string, 
 		}
 	}
 	return errors.New("stream not exist")
+}
+
+func (sm *testStreamManager) Reset() error {
+	sm.streamIDs = nil
+	return nil
 }
 
 func (sm *testStreamManager) isStreamExist(stid sttypes.StreamID) bool {

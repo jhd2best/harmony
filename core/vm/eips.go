@@ -26,6 +26,10 @@ import (
 )
 
 var activators = map[int]func(*JumpTable){
+	8024: enable8024,
+	5656: enable5656,
+	6780: enable6780,
+	3860: enable3860,
 	3855: enable3855,
 	3529: enable3529,
 	3198: enable3198,
@@ -34,6 +38,7 @@ var activators = map[int]func(*JumpTable){
 	1884: enable1884,
 	1344: enable1344,
 	1153: enable1153,
+	7939: enable7939,
 }
 
 // EnableEIP enables the given EIP on the config.
@@ -164,6 +169,17 @@ func enable3529(jt *JumpTable) {
 	jt[SELFDESTRUCT].dynamicGas = gasSelfdestructEIP3529
 }
 
+// enable6780 applies EIP-6780 (deactivate SELFDESTRUCT)
+func enable6780(jt *JumpTable) {
+	jt[SELFDESTRUCT] = &operation{
+		execute:     opSelfdestruct6780,
+		dynamicGas:  gasSelfdestructEIP3529,
+		constantGas: params.SelfdestructGasEIP150,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+}
+
 // enable3198 applies EIP-3198 (BASEFEE Opcode)
 // - Adds an opcode that returns the current block's base fee.
 func enable3198(jt *JumpTable) {
@@ -237,4 +253,64 @@ func enable3855(jt *JumpTable) {
 func opPush0(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	scope.Stack.push(new(uint256.Int))
 	return nil, nil
+}
+
+// enable7939 applies EIP-7939 (CLZ opcode)
+func enable7939(jt *JumpTable) {
+	jt[CLZ] = &operation{
+		execute:     opCLZ,
+		constantGas: GasFastestStep,
+		minStack:    minStack(1, 1),
+		maxStack:    maxStack(1, 1),
+	}
+}
+
+// opCLZ implements the CLZ opcode (count leading zero bytes)
+func opCLZ(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	x := scope.Stack.peek()
+	x.SetUint64(256 - uint64(x.BitLen()))
+	return nil, nil
+}
+
+// enable5656 applies EIP-5656 (MCOPY opcode)
+func enable5656(jt *JumpTable) {
+	jt[MCOPY] = &operation{
+		execute:     opMcopy,
+		constantGas: 0,
+		dynamicGas:  gasMcopy,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(3, 0),
+		memorySize:  memoryMcopy,
+	}
+}
+
+// enable8024 applies EIP-8024 (DUPN, SWAPN, EXCHANGE)
+func enable8024(jt *JumpTable) {
+	jt[DUPN] = &operation{
+		execute:     opDupN,
+		constantGas: GasFastestStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(0, 1),
+	}
+	jt[SWAPN] = &operation{
+		execute:     opSwapN,
+		constantGas: GasFastestStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(0, 0),
+	}
+	jt[EXCHANGE] = &operation{
+		execute:     opExchange,
+		constantGas: GasFastestStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(0, 0),
+	}
+}
+
+// enable3860 applies EIP-3860 "Limit and Meter Initcode"
+// - Limits initcode size to 49152 bytes
+// - Charges 2 gas per 32-byte chunk of initcode
+// https://eips.ethereum.org/EIPS/eip-3860
+func enable3860(jt *JumpTable) {
+	jt[CREATE].dynamicGas = gasCreateEip3860
+	jt[CREATE2].dynamicGas = gasCreate2Eip3860
 }

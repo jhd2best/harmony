@@ -17,15 +17,17 @@
 package vm
 
 import (
+	"encoding/binary"
 	"math/big"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
+	ethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/harmony-one/harmony/core/types"
+	hmyparams "github.com/harmony-one/harmony/internal/params"
 	"github.com/harmony-one/harmony/shard"
 
 	//"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
@@ -467,6 +469,7 @@ func opBlockhash(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 		num.Clear()
 		return nil, nil
 	}
+
 	var upper, lower uint64
 	upper = interpreter.evm.Context.BlockNumber.Uint64()
 	if upper < 257 {
@@ -474,11 +477,41 @@ func opBlockhash(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 	} else {
 		lower = upper - 256
 	}
+
+	// First, check the traditional 256-block window
 	if num64 >= lower && num64 < upper {
-		num.SetBytes(interpreter.evm.Context.GetHash(num64).Bytes())
-	} else {
-		num.Clear()
+		res := interpreter.evm.Context.GetHash(num64)
+		num.SetBytes(res[:])
+		return nil, nil
 	}
+
+	// If EIP-2935 (Prague) is active, check the history storage contract
+	// for blocks beyond the 256-block window (up to 8192 blocks)
+	if interpreter.evm.chainRules.IsPrague {
+		historyLower := uint64(0)
+		if upper > hmyparams.HistoryServeWindow {
+			historyLower = upper - hmyparams.HistoryServeWindow
+		}
+
+		// Check if the requested block is within the history window but outside the 256-block window
+		// The history storage contract only serves blocks older than the 256-block window
+		if num64 >= historyLower && num64 < lower {
+			// Calculate the storage key for the history contract
+			ringIndex := num64 % hmyparams.HistoryServeWindow
+			var key common.Hash
+			binary.BigEndian.PutUint64(key[24:], ringIndex)
+
+			// Read from the history storage contract
+			hash := interpreter.evm.StateDB.GetState(hmyparams.HistoryStorageAddress, key)
+			if hash != (common.Hash{}) {
+				num.SetBytes(hash[:])
+				return nil, nil
+			}
+		}
+	}
+
+	// Block hash not available
+	num.Clear()
 	return nil, nil
 }
 
@@ -540,6 +573,18 @@ func opMstore(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 func opMstore8(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	off, val := scope.Stack.pop(), scope.Stack.pop()
 	scope.Memory.store[off.Uint64()] = byte(val.Uint64())
+	return nil, nil
+}
+
+func opMcopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	var (
+		dst    = scope.Stack.pop()
+		src    = scope.Stack.pop()
+		length = scope.Stack.pop()
+	)
+	// These values are checked for overflow during memory expansion calculation
+	// (the memorySize function on the opcode).
+	scope.Memory.Copy(dst.Uint64(), src.Uint64(), length.Uint64())
 	return nil, nil
 }
 
@@ -713,7 +758,7 @@ func opCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byt
 	// By using big0 here, we save an alloc for the most common case (non-ether-transferring contract calls),
 	// but it would make more sense to extend the usage of uint256.Int
 	if !value.IsZero() {
-		gas += params.CallStipend
+		gas += ethparams.CallStipend
 		bigVal = value.ToBig()
 	}
 
@@ -750,7 +795,7 @@ func opCallCode(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 	//TODO: use uint256.Int instead of converting with toBig()
 	var bigVal = big0
 	if !value.IsZero() {
-		gas += params.CallStipend
+		gas += ethparams.CallStipend
 		bigVal = value.ToBig()
 	}
 
@@ -867,6 +912,22 @@ func opSelfdestruct(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext
 	return nil, errStopToken
 }
 
+func opSelfdestruct6780(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	if interpreter.readOnly {
+		return nil, ErrWriteProtection
+	}
+	beneficiary := scope.Stack.pop()
+	balance := interpreter.evm.StateDB.GetBalance(scope.Contract.Address())
+	interpreter.evm.StateDB.SubBalance(scope.Contract.Address(), balance)
+	interpreter.evm.StateDB.AddBalance(beneficiary.Bytes20(), balance)
+	interpreter.evm.StateDB.Selfdestruct6780(scope.Contract.Address())
+	if interpreter.cfg.Debug && interpreter.cfg.Tracer != nil {
+		interpreter.cfg.Tracer.CaptureEnter(SELFDESTRUCT, scope.Contract.Address(), beneficiary.Bytes20(), []byte{}, 0, balance)
+		interpreter.cfg.Tracer.CaptureExit([]byte{}, 0, nil)
+	}
+	return nil, errStopToken
+}
+
 // following functions are used by the instruction jump  table
 
 // make log instruction function
@@ -952,4 +1013,130 @@ func makeSwap(size int64) executionFunc {
 		scope.Stack.swap(int(size))
 		return nil, nil
 	}
+}
+
+// decodeSingle decodes the immediate operand of a backward-compatible DUPN or SWAPN instruction (EIP-8024)
+// https://eips.ethereum.org/EIPS/eip-8024
+func decodeSingle(x byte) int {
+	// Depths 1-16 are already covered by the legacy opcodes. The forbidden byte range [91, 127] removes
+	// 37 values from the 256 possible immediates, leaving 219 usable values, so this encoding covers depths
+	// 17 through 235. The immediate is encoded as (x + 111) % 256, where 111 is chosen so that these values
+	// avoid the forbidden range. Decoding is simply the modular inverse (i.e. 111+145=256).
+	return (int(x) + 145) % 256
+}
+
+// decodePair decodes the immediate operand of a backward-compatible EXCHANGE
+// instruction (EIP-8024) into stack indices (n, m) where 1 <= n < m
+// and n + m <= 30. The forbidden byte range [82, 127] removes 46 values from
+// the 256 possible immediates, leaving exactly 210 usable bytes.
+// https://eips.ethereum.org/EIPS/eip-8024
+func decodePair(x byte) (int, int) {
+	// XOR with 143 remaps the forbidden bytes [82, 127] to an unused corner
+	// of the 16x16 grid below.
+	k := int(x ^ 143)
+	// Split into row q and column r of a 16x16 grid. The 210 valid pairs
+	// occupy two triangles within this grid.
+	q, r := k/16, k%16
+	// Upper triangle (q < r): pairs where m <= 16, encoded directly as
+	// (q+1, r+1).
+	if q < r {
+		return q + 1, r + 1
+	}
+	// Lower triangle: pairs where m > 16, recovered as (r+1, 29-q).
+	return r + 1, 29 - q
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func opDupN(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	code := scope.Contract.Code
+	i := *pc + 1
+
+	// If the immediate byte is missing, treat as 0x00 (same convention as PUSHn).
+	var x byte
+	if i < uint64(len(code)) {
+		x = code[i]
+	}
+
+	// This range is excluded to preserve compatibility with existing opcodes.
+	if x > 90 && x < 128 {
+		return nil, &ErrInvalidOpCode{opcode: DUPN}
+	}
+	n := decodeSingle(x)
+
+	// DUPN duplicates the n'th stack item, so the stack must contain at least n elements.
+	if scope.Stack.len() < n {
+		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: n}
+	}
+
+	// The n'th stack item is duplicated at the top of the stack.
+	scope.Stack.push(scope.Stack.Back(n - 1))
+	*pc += 1
+	return nil, nil
+}
+
+func opSwapN(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	code := scope.Contract.Code
+	i := *pc + 1
+
+	// If the immediate byte is missing, treat as 0x00 (same convention as PUSHn).
+	var x byte
+	if i < uint64(len(code)) {
+		x = code[i]
+	}
+
+	// This range is excluded to preserve compatibility with existing opcodes.
+	if x > 90 && x < 128 {
+		return nil, &ErrInvalidOpCode{opcode: SWAPN}
+	}
+	n := decodeSingle(x)
+
+	// SWAPN operates on the top and n+1 stack items, so the stack must contain at least n+1 elements.
+	if scope.Stack.len() < n+1 {
+		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: n + 1}
+	}
+
+	// The (n+1)'th stack item is swapped with the top of the stack.
+	indexTop := scope.Stack.len() - 1
+	indexN := scope.Stack.len() - 1 - n
+	scope.Stack.data[indexTop], scope.Stack.data[indexN] = scope.Stack.data[indexN], scope.Stack.data[indexTop]
+	*pc += 1
+	return nil, nil
+}
+
+func opExchange(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	code := scope.Contract.Code
+	i := *pc + 1
+
+	// If the immediate byte is missing, treat as 0x00 (same convention as PUSHn).
+	var x byte
+	if i < uint64(len(code)) {
+		x = code[i]
+	}
+
+	// This range is excluded both to preserve compatibility with existing opcodes
+	// and to keep decode_pair’s 16-aligned arithmetic mapping valid (0–81, 128–255).
+	if x > 81 && x < 128 {
+		return nil, &ErrInvalidOpCode{opcode: EXCHANGE}
+	}
+	n, m := decodePair(x)
+	need := max(n, m) + 1
+
+	// EXCHANGE operates on the (n+1)'th and (m+1)'th stack items,
+	// so the stack must contain at least max(n, m)+1 elements.
+	if scope.Stack.len() < need {
+		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: need}
+	}
+
+	// The (n+1)‘th stack item is swapped with the (m+1)‘th stack item.
+	indexN := scope.Stack.len() - 1 - n
+	indexM := scope.Stack.len() - 1 - m
+	scope.Stack.data[indexN], scope.Stack.data[indexM] = scope.Stack.data[indexM], scope.Stack.data[indexN]
+	*pc += 1
+	return nil, nil
 }

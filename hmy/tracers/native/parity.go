@@ -1,20 +1,4 @@
-// Copyright 2017 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
-package tracers
+package native
 
 import (
 	"encoding/json"
@@ -27,8 +11,65 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/harmony-one/harmony/core/vm"
+	"github.com/harmony-one/harmony/crypto/hash"
+	"github.com/harmony-one/harmony/hmy/tracers"
 	"github.com/holiman/uint256"
 )
+
+func init() {
+	register("ParityBlockTracer", newParityTracer)
+}
+
+func newParityTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
+	return &ParityBlockTracer{}, nil
+}
+
+func (jst *ParityBlockTracer) CaptureTxStart(gasLimit uint64) {
+
+}
+
+func (jst *ParityBlockTracer) CaptureTxEnd(restGas uint64) {
+}
+
+func (jst *ParityBlockTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+
+}
+
+func (jst *ParityBlockTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
+}
+
+// get TraceBlockStorage from tracer, then store it to db
+func (jst *ParityBlockTracer) GetStorage() *TraceBlockStorage {
+	blockStorage := &TraceBlockStorage{
+		Hash:         jst.Hash,
+		Number:       jst.Number,
+		addressIndex: make(map[common.Address]int),
+		dataIndex:    make(map[common.Hash]int),
+	}
+	txStorage := &TxStorage{
+		Storages: make([]*ActionStorage, 0, 1024),
+	}
+	var finalize func(ac *action, traceAddress []uint)
+	finalize = func(ac *action, traceAddress []uint) {
+		acStorage := ac.toStorage(blockStorage)
+		acStorage.Subtraces = uint(len(ac.subCalls))
+		acStorage.TraceAddress = make([]uint, len(traceAddress))
+		copy(acStorage.TraceAddress, traceAddress)
+		txStorage.Storages = append(txStorage.Storages, acStorage)
+		for i, subAc := range ac.subCalls {
+			finalize(subAc, append(traceAddress[:], uint(i)))
+		}
+	}
+	for _, curTx := range jst.tracers {
+		root := &curTx.action
+		txStorage.Hash = curTx.transactionHash
+		txStorage.Storages = txStorage.Storages[:0]
+		finalize(root, make([]uint, 0))
+		b, _ := rlp.EncodeToBytes(txStorage)
+		blockStorage.TraceStorages = append(blockStorage.TraceStorages, b)
+	}
+	return blockStorage
+}
 
 type action struct {
 	op       vm.OpCode
@@ -209,31 +250,6 @@ type ParityTxTracer struct {
 	calls               []*action
 	action
 }
-type ParityBlockTracer struct {
-	Hash    common.Hash
-	Number  uint64
-	cur     *ParityTxTracer
-	tracers []*ParityTxTracer
-}
-
-func (jst *ParityBlockTracer) CaptureTxStart(gasLimit uint64) {
-
-}
-
-func (jst *ParityBlockTracer) CaptureTxEnd(restGas uint64) {
-	//TODO implement me
-	//panic("implement me")
-}
-
-func (jst *ParityBlockTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
-	//TODO implement me
-	//panic("implement me")
-}
-
-func (jst *ParityBlockTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
-	//TODO implement me
-	//panic("implement me")
-}
 
 func (ptt *ParityTxTracer) push(ac *action) {
 	ptt.calls = append(ptt.calls, ac)
@@ -254,8 +270,14 @@ func (ptt *ParityTxTracer) len() int {
 	return len(ptt.calls)
 }
 
-// CaptureStart implements the ParityBlockTracer interface to initialize the tracing operation.
-func (jst *ParityBlockTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) error {
+type ParityBlockTracer struct {
+	Hash    common.Hash
+	Number  uint64
+	cur     *ParityTxTracer
+	tracers []*ParityTxTracer
+}
+
+func (jst *ParityBlockTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
 	jst.cur = &ParityTxTracer{}
 	jst.cur.op = vm.CALL // vritual call
 	if create {
@@ -272,25 +294,41 @@ func (jst *ParityBlockTracer) CaptureStart(env *vm.EVM, from common.Address, to 
 	jst.cur.blockNumber = env.Context.BlockNumber.Uint64()
 	jst.cur.descended = false
 	jst.cur.push(&jst.cur.action)
-	return nil
+	return
 }
 
-// CaptureState implements the ParityBlockTracer interface to trace a single step of VM execution.
-func (jst *ParityBlockTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost uint64, memory *vm.Memory, stack *vm.Stack, contract *vm.Contract, depth int, err error) (vm.HookAfter, error) {
+func (jst *ParityBlockTracer) CaptureEnd(output []byte, gasUsed uint64, t time.Duration, err error) {
+	jst.cur.output = output
+	jst.cur.gasUsed = gasUsed
 	if err != nil {
-		return nil, jst.CaptureFault(env, pc, op, gas, cost, memory, stack, contract, depth, err)
+		jst.cur.err = err
 	}
-	var retErr error
+	jst.tracers = append(jst.tracers, jst.cur)
+	return
+}
+
+func (jst *ParityBlockTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
+	var (
+		//retErr   error
+		stack    = scope.Stack
+		memory   = scope.Memory
+		contract = scope.Contract
+	)
+	if err != nil {
+		jst.CaptureFault(pc, op, gas, cost, scope, depth, err)
+		return
+	}
+
 	stackPeek := func(n int) *uint256.Int {
 		if n >= len(stack.Data()) {
-			retErr = errors.New("tracer bug:stack overflow")
+			//retErr = errors.New("tracer bug:stack overflow")
 			return uint256.NewInt(0)
 		}
 		return stack.Back(n)
 	}
 	memoryCopy := func(off, size int64) []byte {
 		if off+size > int64(memory.Len()) {
-			retErr = errors.New("tracer bug:memory leak")
+			//retErr = errors.New("tracer bug:memory leak")
 			return nil
 		}
 		return memory.GetCopy(off, size)
@@ -309,7 +347,7 @@ func (jst *ParityBlockTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode,
 			value:   stackPeek(0).ToBig(),
 		})
 		jst.cur.descended = true
-		return nil, retErr
+		return
 	case vm.SELFDESTRUCT:
 		ac := jst.cur.last()
 		ac.push(&action{
@@ -320,12 +358,12 @@ func (jst *ParityBlockTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode,
 			gasCost: cost,
 			value:   env.StateDB.GetBalance(contract.Address()),
 		})
-		return nil, retErr
+		return
 	case vm.CALL, vm.CALLCODE, vm.DELEGATECALL, vm.STATICCALL:
 		to := common.BigToAddress(stackPeek(1).ToBig())
 		precompiles := vm.PrecompiledContractsVRF
 		if _, exist := precompiles[to]; exist {
-			return nil, nil
+			return
 		}
 		off := 1
 		if op == vm.DELEGATECALL || op == vm.STATICCALL {
@@ -348,7 +386,7 @@ func (jst *ParityBlockTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode,
 		}
 		jst.cur.push(callObj)
 		jst.cur.descended = true
-		return nil, retErr
+		return
 	}
 
 	if jst.cur.descended {
@@ -363,7 +401,7 @@ func (jst *ParityBlockTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode,
 		revertOff := int64(stackPeek(0).Uint64())
 		revertLen := int64(stackPeek(1).Uint64())
 		last.revert = memoryCopy(revertOff, revertLen)
-		return nil, retErr
+		return
 	}
 	if depth == jst.cur.len()-1 { // depth == len - 1
 		call := jst.cur.pop()
@@ -390,14 +428,12 @@ func (jst *ParityBlockTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode,
 		}
 		jst.cur.last().push(call)
 	}
-	return nil, retErr
+	return
 }
 
-// CaptureFault implements the ParityBlockTracer interface to trace an execution fault
-// while running an opcode.
-func (jst *ParityBlockTracer) CaptureFault(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost uint64, memory *vm.Memory, stack *vm.Stack, contract *vm.Contract, depth int, err error) error {
+func (jst *ParityBlockTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, depth int, err error) {
 	if jst.cur.last().err != nil {
-		return nil
+		return
 	}
 	call := jst.cur.pop()
 	call.err = err
@@ -410,58 +446,14 @@ func (jst *ParityBlockTracer) CaptureFault(env *vm.EVM, pc uint64, op vm.OpCode,
 	// Flatten the failed call into its parent
 	if jst.cur.len() > 0 {
 		jst.cur.last().push(call)
-		return nil
+		return
 	}
 	jst.cur.push(call)
-	return nil
-}
-
-// CaptureEnd is called after the call finishes to finalize the tracing.
-func (jst *ParityBlockTracer) CaptureEnd(output []byte, gasUsed uint64, t time.Duration, err error) error {
-	jst.cur.output = output
-	jst.cur.gasUsed = gasUsed
-	if err != nil {
-		jst.cur.err = err
-	}
-	jst.tracers = append(jst.tracers, jst.cur)
-	return nil
-}
-
-// get TraceBlockStorage from tracer, then store it to db
-func (jst *ParityBlockTracer) GetStorage() *TraceBlockStorage {
-	blockStorage := &TraceBlockStorage{
-		Hash:         jst.Hash,
-		Number:       jst.Number,
-		addressIndex: make(map[common.Address]int),
-		dataIndex:    make(map[common.Hash]int),
-	}
-	txStorage := &TxStorage{
-		Storages: make([]*ActionStorage, 0, 1024),
-	}
-	var finalize func(ac *action, traceAddress []uint)
-	finalize = func(ac *action, traceAddress []uint) {
-		acStorage := ac.toStorage(blockStorage)
-		acStorage.Subtraces = uint(len(ac.subCalls))
-		acStorage.TraceAddress = make([]uint, len(traceAddress))
-		copy(acStorage.TraceAddress, traceAddress)
-		txStorage.Storages = append(txStorage.Storages, acStorage)
-		for i, subAc := range ac.subCalls {
-			finalize(subAc, append(traceAddress[:], uint(i)))
-		}
-	}
-	for _, curTx := range jst.tracers {
-		root := &curTx.action
-		txStorage.Hash = curTx.transactionHash
-		txStorage.Storages = txStorage.Storages[:0]
-		finalize(root, make([]uint, 0))
-		b, _ := rlp.EncodeToBytes(txStorage)
-		blockStorage.TraceStorages = append(blockStorage.TraceStorages, b)
-	}
-	return blockStorage
+	return
 }
 
 // GetResult calls the Javascript 'result' function and returns its value, or any accumulated error
-func (jst *ParityBlockTracer) GetResult() ([]json.RawMessage, error) {
+func (jst *ParityBlockTracer) GetParityResult() ([]json.RawMessage, error) {
 	var results []json.RawMessage
 	var err error
 	var headPiece string
@@ -479,7 +471,7 @@ func (jst *ParityBlockTracer) GetResult() ([]json.RawMessage, error) {
 		)
 		var resultPiece string
 		if ac.err != nil {
-			resultPiece = fmt.Sprintf(`,"error":"Reverted","revert":"%x"`, ac.revert)
+			resultPiece = fmt.Sprintf(`,"error":"Reverted","revert":"0x%x"`, ac.revert)
 
 		} else if outStr != nil {
 			resultPiece = fmt.Sprintf(`,"result":%s`, *outStr)
@@ -502,4 +494,235 @@ func (jst *ParityBlockTracer) GetResult() ([]json.RawMessage, error) {
 		finalize(root, make([]int, 0))
 	}
 	return results, err
+}
+
+func (jst *ParityBlockTracer) GetResult() (json.RawMessage, error) {
+	var builder strings.Builder
+	var err error
+	var headPiece string
+	builder.WriteString("[")
+	var finalize func(ac *action, traceAddress []int)
+	finalize = func(ac *action, traceAddress []int) {
+		typStr, acStr, outStr := ac.toJsonStr()
+		if acStr == nil {
+			err = errors.New("tracer internal failure")
+			return
+		}
+		traceStr, _ := json.Marshal(traceAddress)
+		bodyPiece := fmt.Sprintf(
+			`,"subtraces":%d,"traceAddress":%s,"type":"%s","action":%s`,
+			len(ac.subCalls), string(traceStr), typStr, *acStr,
+		)
+		var resultPiece string
+		if ac.err != nil {
+			resultPiece = fmt.Sprintf(`,"error":"Reverted","revert":"%x"`, ac.revert)
+
+		} else if outStr != nil {
+			resultPiece = fmt.Sprintf(`,"result":%s`, *outStr)
+		} else {
+			resultPiece = `,"result":null`
+		}
+
+		builder.WriteString("{")
+		builder.WriteString(headPiece)
+		builder.WriteString(bodyPiece)
+		builder.WriteString(resultPiece)
+		builder.WriteString("}")
+		//results = append(results, jstr)
+		for i, subAc := range ac.subCalls {
+			finalize(subAc, append(traceAddress[:], i))
+		}
+	}
+	for _, curTx := range jst.tracers {
+		root := &curTx.action
+		headPiece = fmt.Sprintf(
+			`"blockNumber":%d,"blockHash":"%s","transactionHash":"%s","transactionPosition":%d`,
+			curTx.blockNumber, curTx.blockHash.Hex(), curTx.transactionHash.Hex(), curTx.transactionPosition,
+		)
+		finalize(root, make([]int, 0))
+	}
+	builder.WriteString("]")
+	return json.RawMessage(builder.String()), err
+}
+
+func (jst *ParityBlockTracer) Stop(err error) {
+
+}
+
+type TraceBlockStorage struct {
+	Hash           common.Hash
+	Number         uint64
+	AddressTable   []common.Address       // address table
+	DataKeyTable   []common.Hash          // data key table
+	dataValueTable [][]byte               // data, store in db, avoid RLPEncode
+	TraceStorages  [][]byte               // trace data, length equal the number of transaction in a block
+	addressIndex   map[common.Address]int // address index in AddressTable
+	dataIndex      map[common.Hash]int    // data index in DataKeyTable
+}
+
+// get data of index i
+func (ts *TraceBlockStorage) getData(i int) []byte {
+	return ts.dataValueTable[i]
+}
+
+// get address of index i
+func (ts *TraceBlockStorage) getAddress(i int) common.Address {
+	return ts.AddressTable[i]
+}
+
+// store data and assign an index to it. if data existed, just return it's index
+func (ts *TraceBlockStorage) indexData(data []byte) int {
+	key := hash.Keccak256Hash(data)
+	if index, exist := ts.dataIndex[key]; exist {
+		return index
+	}
+	index := len(ts.DataKeyTable)
+	ts.DataKeyTable = append(ts.DataKeyTable, key)
+	ts.dataValueTable = append(ts.dataValueTable, data)
+	ts.dataIndex[key] = index
+	return index
+}
+
+// store address and assign an index to it. if address existed, just return it's index
+func (ts *TraceBlockStorage) indexAddress(address common.Address) int {
+	if index, exist := ts.addressIndex[address]; exist {
+		return index
+	}
+	index := len(ts.addressIndex)
+	ts.AddressTable = append(ts.AddressTable, address)
+	ts.addressIndex[address] = index
+	return index
+}
+
+// use this key as
+func (ts *TraceBlockStorage) KeyDB() []byte {
+	return ts.Hash[:]
+}
+
+// store TraceBlockStorage to db
+func (ts *TraceBlockStorage) ToDB(write func([]byte, []byte)) {
+	for index, key := range ts.DataKeyTable {
+		write(key[:], ts.dataValueTable[index])
+	}
+	bytes, _ := rlp.EncodeToBytes(ts)
+	write(ts.KeyDB(), bytes)
+}
+
+// load TraceBlockStorage from db
+func (ts *TraceBlockStorage) FromDB(read func([]byte) ([]byte, error)) error {
+	bytes, err := read(ts.KeyDB())
+	if err != nil {
+		return err
+	}
+	err = rlp.DecodeBytes(bytes, ts)
+	if err != nil {
+		return err
+	}
+	for _, key := range ts.DataKeyTable {
+		data, err := read(key[:])
+		if err != nil {
+			return err
+		}
+		ts.dataValueTable = append(ts.dataValueTable, data)
+	}
+	return nil
+}
+
+// return trace result of a tx for giving index
+func (ts *TraceBlockStorage) TxJson(index int) ([]json.RawMessage, error) {
+	var results []json.RawMessage
+	var txStorage TxStorage
+	var err error
+	b := ts.TraceStorages[index]
+	err = rlp.DecodeBytes(b, &txStorage)
+	if err != nil {
+		return nil, err
+	}
+
+	headPiece := fmt.Sprintf(
+		`"blockNumber":%d,"blockHash":"%s","transactionHash":"%s","transactionPosition":%d`,
+		ts.Number, ts.Hash.Hex(), txStorage.Hash.Hex(), index,
+	)
+
+	for _, acStorage := range txStorage.Storages {
+		ac := &action{}
+		ac.fromStorage(ts, acStorage)
+
+		typStr, acStr, outStr := ac.toJsonStr()
+		if acStr == nil {
+			err = errors.New("tracer internal failure")
+			return nil, err
+		}
+		traceStr, _ := json.Marshal(acStorage.TraceAddress)
+		bodyPiece := fmt.Sprintf(
+			`,"subtraces":%d,"traceAddress":%s,"type":"%s","action":%s`,
+			acStorage.Subtraces, string(traceStr), typStr, *acStr,
+		)
+		var resultPiece string
+		if ac.err != nil {
+			resultPiece = fmt.Sprintf(`,"error":"Reverted","revert":"0x%x"`, ac.revert)
+		} else if outStr != nil {
+			resultPiece = fmt.Sprintf(`,"result":%s`, *outStr)
+		} else {
+			resultPiece = `,"result":null`
+		}
+		jstr := "{" + headPiece + bodyPiece + resultPiece + "}"
+		results = append(results, json.RawMessage(jstr))
+	}
+	return results, nil
+}
+
+// return trace result of a block
+func (ts *TraceBlockStorage) ToJson() (json.RawMessage, error) {
+	var results []json.RawMessage
+	for i := range ts.TraceStorages {
+		tx, err := ts.TxJson(i)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, tx...)
+	}
+	return json.Marshal(results)
+}
+
+type ActionStorage struct {
+	Subtraces    uint
+	TraceAddress []uint
+	TraceData    []byte
+}
+
+func (storage *ActionStorage) appendByte(byt byte) {
+	storage.TraceData = append(storage.TraceData, byt)
+}
+
+func (storage *ActionStorage) appendFixed(data []byte) {
+	storage.TraceData = append(storage.TraceData, data...)
+}
+func (storage *ActionStorage) appendNumber(num *big.Int) {
+	bytes, _ := rlp.EncodeToBytes(num)
+	storage.appendByte(uint8(len(bytes)))
+	storage.appendFixed(bytes)
+}
+
+func (storage *ActionStorage) readByte() byte {
+	val := storage.TraceData[0]
+	storage.TraceData = storage.TraceData[1:]
+	return val
+}
+func (storage *ActionStorage) readFixedData(size uint) []byte {
+	fixedData := storage.TraceData[:size]
+	storage.TraceData = storage.TraceData[size:]
+	return fixedData
+}
+func (storage *ActionStorage) readNumber() *big.Int {
+	size := storage.readByte()
+	bytes := storage.readFixedData(uint(size))
+	var num big.Int
+	rlp.DecodeBytes(bytes, &num)
+	return &num
+}
+
+type TxStorage struct {
+	Hash     common.Hash
+	Storages []*ActionStorage
 }

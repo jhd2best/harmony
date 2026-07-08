@@ -26,7 +26,7 @@ type OpCode byte
 // IsPush specifies if an opcode is a PUSH opcode.
 func (op OpCode) IsPush() bool {
 	switch op {
-	case PUSH1, PUSH2, PUSH3, PUSH4, PUSH5, PUSH6, PUSH7, PUSH8, PUSH9, PUSH10, PUSH11, PUSH12, PUSH13, PUSH14, PUSH15, PUSH16, PUSH17, PUSH18, PUSH19, PUSH20, PUSH21, PUSH22, PUSH23, PUSH24, PUSH25, PUSH26, PUSH27, PUSH28, PUSH29, PUSH30, PUSH31, PUSH32:
+	case PUSH0, PUSH1, PUSH2, PUSH3, PUSH4, PUSH5, PUSH6, PUSH7, PUSH8, PUSH9, PUSH10, PUSH11, PUSH12, PUSH13, PUSH14, PUSH15, PUSH16, PUSH17, PUSH18, PUSH19, PUSH20, PUSH21, PUSH22, PUSH23, PUSH24, PUSH25, PUSH26, PUSH27, PUSH28, PUSH29, PUSH30, PUSH31, PUSH32:
 		return true
 	}
 	return false
@@ -64,6 +64,7 @@ const (
 	SHL    OpCode = 0x1b
 	SHR    OpCode = 0x1c
 	SAR    OpCode = 0x1d
+	CLZ    OpCode = 0x1e
 )
 
 // 0x20 range - crypto.
@@ -119,6 +120,9 @@ const (
 	MSIZE    OpCode = 0x59
 	GAS      OpCode = 0x5a
 	JUMPDEST OpCode = 0x5b
+	TLOAD    OpCode = 0x5c
+	TSTORE   OpCode = 0x5d
+	MCOPY    OpCode = 0x5e
 	PUSH0    OpCode = 0x5f
 )
 
@@ -223,8 +227,9 @@ const (
 )
 
 const (
-	TLOAD  OpCode = 0xb3
-	TSTORE OpCode = 0xb4
+	DUPN     OpCode = 0xe6
+	SWAPN    OpCode = 0xe7
+	EXCHANGE OpCode = 0xe8
 )
 
 // Since the opcodes aren't all in order we can't use a regular slice.
@@ -256,6 +261,7 @@ var opCodeToString = map[OpCode]string{
 	SHL:    "SHL",
 	SHR:    "SHR",
 	SAR:    "SAR",
+	CLZ:    "CLZ",
 	ADDMOD: "ADDMOD",
 	MULMOD: "MULMOD",
 
@@ -306,6 +312,9 @@ var opCodeToString = map[OpCode]string{
 	MSIZE:    "MSIZE",
 	GAS:      "GAS",
 	JUMPDEST: "JUMPDEST",
+	TLOAD:    "TLOAD",
+	TSTORE:   "TSTORE",
+	MCOPY:    "MCOPY",
 	PUSH0:    "PUSH0",
 
 	// 0x60 range - push.
@@ -381,9 +390,10 @@ var opCodeToString = map[OpCode]string{
 	LOG3:   "LOG3",
 	LOG4:   "LOG4",
 
-	// 0xb0 range.
-	TLOAD:  "TLOAD",
-	TSTORE: "TSTORE",
+	// 0xe0 range - EIP-8024.
+	DUPN:     "DUPN",
+	SWAPN:    "SWAPN",
+	EXCHANGE: "EXCHANGE",
 
 	// 0xf0 range.
 	CREATE:       "CREATE",
@@ -432,6 +442,7 @@ var stringToOp = map[string]OpCode{
 	"SHL":            SHL,
 	"SHR":            SHR,
 	"SAR":            SAR,
+	"CLZ":            CLZ,
 	"ADDMOD":         ADDMOD,
 	"MULMOD":         MULMOD,
 	"KECCAK256":      KECCAK256,
@@ -474,9 +485,13 @@ var stringToOp = map[string]OpCode{
 	"MSIZE":          MSIZE,
 	"GAS":            GAS,
 	"JUMPDEST":       JUMPDEST,
-	"PUSH0":          PUSH0,
 	"TLOAD":          TLOAD,
 	"TSTORE":         TSTORE,
+	"MCOPY":          MCOPY,
+	"PUSH0":          PUSH0,
+	"DUPN":           DUPN,
+	"SWAPN":          SWAPN,
+	"EXCHANGE":       EXCHANGE,
 	"PUSH1":          PUSH1,
 	"PUSH2":          PUSH2,
 	"PUSH3":          PUSH3,

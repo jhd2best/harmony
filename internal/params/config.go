@@ -42,10 +42,13 @@ var (
 		EIP155Epoch:                           big.NewInt(28),
 		S3Epoch:                               big.NewInt(28),
 		CrossTxEpoch:                          big.NewInt(28),
+		CXMerkleProofReplayFixEpoch:           big.NewInt(2964),
+		CXReceiptStateRollbackEpoch:           big.NewInt(2964),
 		MinCommissionPromoPeriod:              big.NewInt(100),
 		ReceiptLogEpoch:                       big.NewInt(101),
 		PreStakingEpoch:                       big.NewInt(185),
 		CrossLinkEpoch:                        big.NewInt(186),
+		RejectShard0CrossLinkEpoch:            big.NewInt(2964),
 		StakingEpoch:                          big.NewInt(186),
 		QuickUnlockEpoch:                      big.NewInt(191),
 		FiveSecondsEpoch:                      big.NewInt(230),
@@ -78,22 +81,41 @@ var (
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(2152), // 2024-10-31 13:02 UTC
 		HIP32Epoch:                            big.NewInt(2152), // 2024-10-31 13:02 UTC
 		AllowlistEpoch:                        EpochTBD,
-		LeaderRotationV2Epoch:                 EpochTBD,
+		LeaderRotationV2Epoch:                 big.NewInt(2964),
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
+		TimestampValidationEpoch:              big.NewInt(2964),
+		DuplicateCrossLinkEpoch:               big.NewInt(2964),
+		ShardStateValidationEpoch:             big.NewInt(2964),
 		IsOneSecondEpoch:                      EpochTBD,
-		EIP2537PrecompileEpoch:                EpochTBD,
-		EIP1153TransientStorageEpoch:          EpochTBD,
+		EIP2537PrecompileEpoch:                big.NewInt(2964),
+		EIP1153TransientStorageEpoch:          big.NewInt(2964),
+		EIP7939CLZEpoch:                       big.NewInt(2964),
+		EIP5656McopyEpoch:                     big.NewInt(2964),
+		EIP3855Epoch:                          big.NewInt(2964),
+		EIP3860Epoch:                          big.NewInt(2964),
+		EIP6780Epoch:                          big.NewInt(2964),
+		PragueEpoch:                           EpochTBD,
+		EIP8024Epoch:                          big.NewInt(2964),
+		ValidatorWrapperAddressBindEpoch:      big.NewInt(2964),
+		SlashExternalStakeDenomFixEpoch:       big.NewInt(2964),
+		RejectDuplicateSlashEvidenceEpoch:     big.NewInt(2964),
+		SlashGroupOrderFixEpoch:               big.NewInt(2964),
+		BLSProofBindEpoch:                     big.NewInt(2964),
+		SlashBallotSignerFixEpoch:             big.NewInt(2964),
+		VerifyBeaconHeaderSlashEpoch:          big.NewInt(2964),
+		BloomEpoch:                            big.NewInt(2964),
 	}
 
 	// TestnetChainConfig contains the chain parameters to run a node on the harmony test network.
 	TestnetChainConfig = &ChainConfig{
-		ChainID:                               TestnetChainID,
-		EthCompatibleChainID:                  EthTestnetShard0ChainID,
-		EthCompatibleShard0ChainID:            EthTestnetShard0ChainID,
-		EIP155Epoch:                           big.NewInt(0),
-		S3Epoch:                               big.NewInt(0),
-		CrossTxEpoch:                          big.NewInt(0),
+		ChainID:                    TestnetChainID,
+		EthCompatibleChainID:       EthTestnetShard0ChainID,
+		EthCompatibleShard0ChainID: EthTestnetShard0ChainID,
+		EIP155Epoch:                big.NewInt(0),
+		S3Epoch:                    big.NewInt(0),
+		CrossTxEpoch:               big.NewInt(0),
+
 		MinCommissionPromoPeriod:              big.NewInt(2),
 		ReceiptLogEpoch:                       big.NewInt(0),
 		PreStakingEpoch:                       big.NewInt(1),
@@ -130,12 +152,33 @@ var (
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(3044),
 		HIP32Epoch:                            big.NewInt(0),
 		AllowlistEpoch:                        big.NewInt(2),
-		LeaderRotationV2Epoch:                 EpochTBD,
+		LeaderRotationV2Epoch:                 big.NewInt(7420),
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  big.NewInt(3044),
+		TimestampValidationEpoch:              big.NewInt(7170),
 		IsOneSecondEpoch:                      EpochTBD,
-		EIP2537PrecompileEpoch:                EpochTBD,
+		EIP2537PrecompileEpoch:                big.NewInt(7420),
 		EIP1153TransientStorageEpoch:          big.NewInt(6280),
+		EIP6780Epoch:                          big.NewInt(7178),
+		PragueEpoch:                           EpochTBD,
+		EIP7939CLZEpoch:                       big.NewInt(6280),
+		EIP5656McopyEpoch:                     big.NewInt(7170),
+		EIP3855Epoch:                          big.NewInt(7170),
+		EIP3860Epoch:                          big.NewInt(7170),
+		EIP8024Epoch:                          big.NewInt(7170),
+		DuplicateCrossLinkEpoch:               big.NewInt(7385),
+		ValidatorWrapperAddressBindEpoch:      big.NewInt(7385),
+		SlashExternalStakeDenomFixEpoch:       big.NewInt(7385),
+		RejectDuplicateSlashEvidenceEpoch:     big.NewInt(7385),
+		SlashGroupOrderFixEpoch:               big.NewInt(7385),
+		CXReceiptStateRollbackEpoch:           big.NewInt(7385),
+		ShardStateValidationEpoch:             big.NewInt(7385),
+		SlashBallotSignerFixEpoch:             big.NewInt(7385),
+		VerifyBeaconHeaderSlashEpoch:          big.NewInt(7385),
+		RejectShard0CrossLinkEpoch:            big.NewInt(7385),
+		CXMerkleProofReplayFixEpoch:           big.NewInt(7385),
+		BLSProofBindEpoch:                     big.NewInt(7420),
+		BloomEpoch:                            big.NewInt(7414),
 	}
 	// PangaeaChainConfig contains the chain parameters for the Pangaea network.
 	// All features except for CrossLink are enabled at launch.
@@ -146,10 +189,13 @@ var (
 		EIP155Epoch:                           big.NewInt(0),
 		S3Epoch:                               big.NewInt(0),
 		CrossTxEpoch:                          big.NewInt(0),
+		CXMerkleProofReplayFixEpoch:           big.NewInt(0),
+		CXReceiptStateRollbackEpoch:           EpochTBD,
 		MinCommissionPromoPeriod:              big.NewInt(10),
 		ReceiptLogEpoch:                       big.NewInt(0),
 		PreStakingEpoch:                       big.NewInt(1),
 		CrossLinkEpoch:                        big.NewInt(2),
+		RejectShard0CrossLinkEpoch:            big.NewInt(0),
 		StakingEpoch:                          big.NewInt(2),
 		QuickUnlockEpoch:                      big.NewInt(0),
 		FiveSecondsEpoch:                      big.NewInt(0),
@@ -185,9 +231,26 @@ var (
 		LeaderRotationV2Epoch:                 EpochTBD,
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
+		TimestampValidationEpoch:              EpochTBD,
+		DuplicateCrossLinkEpoch:               EpochTBD,
+		ShardStateValidationEpoch:             EpochTBD,
 		IsOneSecondEpoch:                      EpochTBD,
 		EIP2537PrecompileEpoch:                EpochTBD,
 		EIP1153TransientStorageEpoch:          EpochTBD,
+		EIP7939CLZEpoch:                       EpochTBD,
+		EIP5656McopyEpoch:                     EpochTBD,
+		EIP3855Epoch:                          EpochTBD,
+		EIP3860Epoch:                          EpochTBD,
+		PragueEpoch:                           EpochTBD,
+		EIP8024Epoch:                          EpochTBD,
+		ValidatorWrapperAddressBindEpoch:      EpochTBD,
+		SlashExternalStakeDenomFixEpoch:       EpochTBD,
+		RejectDuplicateSlashEvidenceEpoch:     EpochTBD,
+		SlashGroupOrderFixEpoch:               EpochTBD,
+		BLSProofBindEpoch:                     EpochTBD,
+		SlashBallotSignerFixEpoch:             EpochTBD,
+		VerifyBeaconHeaderSlashEpoch:          EpochTBD,
+		BloomEpoch:                            EpochTBD,
 	}
 
 	// PartnerChainConfig contains the chain parameters for the Partner network.
@@ -235,12 +298,33 @@ var (
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(144),
 		HIP32Epoch:                            EpochTBD,
 		AllowlistEpoch:                        EpochTBD,
-		LeaderRotationV2Epoch:                 EpochTBD,
+		LeaderRotationV2Epoch:                 big.NewInt(53508),
 		DevnetExternalEpoch:                   big.NewInt(144),
 		TestnetExternalEpoch:                  EpochTBD,
 		IsOneSecondEpoch:                      big.NewInt(17436),
-		EIP2537PrecompileEpoch:                EpochTBD,
+		EIP2537PrecompileEpoch:                big.NewInt(53508),
 		EIP1153TransientStorageEpoch:          big.NewInt(35626),
+		TimestampValidationEpoch:              big.NewInt(47190),
+		EIP7939CLZEpoch:                       big.NewInt(35626),
+		EIP5656McopyEpoch:                     big.NewInt(49685),
+		EIP3855Epoch:                          big.NewInt(49685),
+		EIP3860Epoch:                          big.NewInt(49685),
+		EIP8024Epoch:                          big.NewInt(49685),
+		EIP6780Epoch:                          big.NewInt(49810),
+		PragueEpoch:                           EpochTBD,
+		CXMerkleProofReplayFixEpoch:           big.NewInt(52050),
+		RejectShard0CrossLinkEpoch:            big.NewInt(52050),
+		DuplicateCrossLinkEpoch:               big.NewInt(52050),
+		ValidatorWrapperAddressBindEpoch:      big.NewInt(52050),
+		SlashExternalStakeDenomFixEpoch:       big.NewInt(52050),
+		RejectDuplicateSlashEvidenceEpoch:     big.NewInt(52050),
+		SlashGroupOrderFixEpoch:               big.NewInt(52050),
+		BLSProofBindEpoch:                     big.NewInt(53508),
+		CXReceiptStateRollbackEpoch:           big.NewInt(52650),
+		ShardStateValidationEpoch:             big.NewInt(52650),
+		SlashBallotSignerFixEpoch:             big.NewInt(52650),
+		VerifyBeaconHeaderSlashEpoch:          big.NewInt(53000),
+		BloomEpoch:                            big.NewInt(53508),
 	}
 
 	// StressnetChainConfig contains the chain parameters for the Stress test network.
@@ -252,10 +336,13 @@ var (
 		EIP155Epoch:                           big.NewInt(0),
 		S3Epoch:                               big.NewInt(0),
 		CrossTxEpoch:                          big.NewInt(0),
+		CXMerkleProofReplayFixEpoch:           big.NewInt(0),
+		CXReceiptStateRollbackEpoch:           EpochTBD,
 		MinCommissionPromoPeriod:              big.NewInt(10),
 		ReceiptLogEpoch:                       big.NewInt(0),
 		PreStakingEpoch:                       big.NewInt(1),
 		CrossLinkEpoch:                        big.NewInt(2),
+		RejectShard0CrossLinkEpoch:            big.NewInt(0),
 		StakingEpoch:                          big.NewInt(2),
 		QuickUnlockEpoch:                      big.NewInt(0),
 		FiveSecondsEpoch:                      big.NewInt(0),
@@ -291,9 +378,26 @@ var (
 		LeaderRotationV2Epoch:                 EpochTBD,
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
+		TimestampValidationEpoch:              EpochTBD,
+		DuplicateCrossLinkEpoch:               EpochTBD,
+		ShardStateValidationEpoch:             EpochTBD,
 		IsOneSecondEpoch:                      EpochTBD,
 		EIP2537PrecompileEpoch:                EpochTBD,
 		EIP1153TransientStorageEpoch:          EpochTBD,
+		EIP7939CLZEpoch:                       EpochTBD,
+		EIP5656McopyEpoch:                     EpochTBD,
+		EIP3855Epoch:                          EpochTBD,
+		EIP3860Epoch:                          EpochTBD,
+		PragueEpoch:                           EpochTBD,
+		EIP8024Epoch:                          EpochTBD,
+		ValidatorWrapperAddressBindEpoch:      EpochTBD,
+		SlashExternalStakeDenomFixEpoch:       EpochTBD,
+		RejectDuplicateSlashEvidenceEpoch:     EpochTBD,
+		SlashGroupOrderFixEpoch:               EpochTBD,
+		BLSProofBindEpoch:                     EpochTBD,
+		SlashBallotSignerFixEpoch:             EpochTBD,
+		VerifyBeaconHeaderSlashEpoch:          EpochTBD,
+		BloomEpoch:                            EpochTBD,
 	}
 
 	// LocalnetChainConfig contains the chain parameters to run for local development.
@@ -304,10 +408,13 @@ var (
 		EIP155Epoch:                           big.NewInt(0),
 		S3Epoch:                               big.NewInt(0),
 		CrossTxEpoch:                          big.NewInt(0),
+		CXMerkleProofReplayFixEpoch:           big.NewInt(5),
+		CXReceiptStateRollbackEpoch:           big.NewInt(5),
 		MinCommissionPromoPeriod:              big.NewInt(10),
 		ReceiptLogEpoch:                       big.NewInt(0),
 		PreStakingEpoch:                       big.NewInt(0),
 		CrossLinkEpoch:                        big.NewInt(2),
+		RejectShard0CrossLinkEpoch:            big.NewInt(5),
 		StakingEpoch:                          big.NewInt(2),
 		QuickUnlockEpoch:                      big.NewInt(0),
 		FiveSecondsEpoch:                      big.NewInt(0),
@@ -332,20 +439,38 @@ var (
 		CrossShardXferPrecompileEpoch:         big.NewInt(1),
 		FeeCollectEpoch:                       big.NewInt(2),
 		ValidatorCodeFixEpoch:                 big.NewInt(2),
-		HIP30Epoch:                            EpochTBD,
+		HIP30Epoch:                            big.NewInt(5),
 		BlockGas30MEpoch:                      big.NewInt(0),
 		MaxRateEpoch:                          EpochTBD,
 		TopMaxRateEpoch:                       EpochTBD,
 		LeaderRotationInternalValidatorsEpoch: big.NewInt(3),
 		LeaderRotationExternalValidatorsEpoch: big.NewInt(3),
 		HIP32Epoch:                            EpochTBD,
-		AllowlistEpoch:                        EpochTBD,
-		LeaderRotationV2Epoch:                 EpochTBD,
+		AllowlistEpoch:                        big.NewInt(5),
+		LeaderRotationV2Epoch:                 big.NewInt(5),
 		DevnetExternalEpoch:                   EpochTBD,
 		TestnetExternalEpoch:                  EpochTBD,
+		TimestampValidationEpoch:              big.NewInt(5),
+		DuplicateCrossLinkEpoch:               big.NewInt(5),
+		ShardStateValidationEpoch:             big.NewInt(5),
 		IsOneSecondEpoch:                      big.NewInt(4),
-		EIP2537PrecompileEpoch:                EpochTBD,
-		EIP1153TransientStorageEpoch:          EpochTBD,
+		EIP2537PrecompileEpoch:                big.NewInt(5),
+		EIP1153TransientStorageEpoch:          big.NewInt(5),
+		EIP7939CLZEpoch:                       big.NewInt(5),
+		EIP5656McopyEpoch:                     big.NewInt(5),
+		EIP3855Epoch:                          big.NewInt(5),
+		EIP3860Epoch:                          big.NewInt(5),
+		EIP6780Epoch:                          big.NewInt(5),
+		PragueEpoch:                           EpochTBD,
+		EIP8024Epoch:                          big.NewInt(5),
+		ValidatorWrapperAddressBindEpoch:      big.NewInt(5),
+		SlashExternalStakeDenomFixEpoch:       big.NewInt(5),
+		RejectDuplicateSlashEvidenceEpoch:     big.NewInt(5),
+		SlashGroupOrderFixEpoch:               big.NewInt(5),
+		BLSProofBindEpoch:                     big.NewInt(5),
+		SlashBallotSignerFixEpoch:             big.NewInt(5),
+		VerifyBeaconHeaderSlashEpoch:          big.NewInt(5),
+		BloomEpoch:                            big.NewInt(5),
 	}
 
 	// AllProtocolChanges ...
@@ -357,7 +482,10 @@ var (
 		EthAllProtocolChangesShard0ChainID, // EthCompatibleShard0ChainID
 		big.NewInt(0),                      // EthCompatibleEpoch
 		big.NewInt(0),                      // CrossTxEpoch
+		big.NewInt(0),                      // CXMerkleProofReplayFixEpoch
+		big.NewInt(0),                      // CXReceiptStateRollbackEpoch
 		big.NewInt(0),                      // CrossLinkEpoch
+		big.NewInt(0),                      // RejectShard0CrossLinkEpoch
 		big.NewInt(1),                      // AggregatedRewardEpoch
 		big.NewInt(1),                      // StakingEpoch
 		big.NewInt(0),                      // PreStakingEpoch
@@ -382,6 +510,7 @@ var (
 		big.NewInt(0),                      // HIP6And8Epoch
 		big.NewInt(0),                      // StakingPrecompileEpoch
 		big.NewInt(2),                      // EIP2537PrecompileEpoch
+		big.NewInt(0),                      // EIP3855Epoch
 		big.NewInt(0),                      // ChainIdFixEpoch
 		big.NewInt(0),                      // SlotsLimitedEpoch
 		big.NewInt(1),                      // CrossShardXferPrecompileEpoch
@@ -400,6 +529,23 @@ var (
 		big.NewInt(0),                      // HIP32Epoch
 		big.NewInt(0),                      // IsOneSecondEpoch
 		big.NewInt(0),                      // EIP1153TransientStorageEpoch
+		big.NewInt(0),                      // EIP7939CLZEpoch
+		big.NewInt(0),                      // EIP5656McopyEpoch
+		big.NewInt(0),                      // EIP3860Epoch
+		big.NewInt(0),                      // EIP6780Epoch
+		big.NewInt(0),                      // TimestampValidationEpoch
+		big.NewInt(0),                      // DuplicateCrossLinkEpoch
+		big.NewInt(0),                      // ShardStateValidationEpoch
+		big.NewInt(0),                      // PragueEpoch
+		big.NewInt(0),                      // EIP8024Epoch
+		big.NewInt(0),                      // ValidatorWrapperAddressBindEpoch
+		big.NewInt(0),                      // SlashExternalStakeDenomFixEpoch
+		big.NewInt(0),                      // RejectDuplicateSlashEvidenceEpoch
+		big.NewInt(1),                      // SlashGroupOrderFixEpoch
+		big.NewInt(0),                      // BLSProofBindEpoch
+		big.NewInt(1),                      // SlashBallotSignerFixEpoch
+		big.NewInt(1),                      // VerifyBeaconHeaderSlashEpoch
+		big.NewInt(1),                      // BloomEpoch
 	}
 
 	// TestChainConfig ...
@@ -411,7 +557,10 @@ var (
 		EthTestShard0ChainID, // EthCompatibleShard0ChainID
 		big.NewInt(0),        // EthCompatibleEpoch
 		big.NewInt(0),        // CrossTxEpoch
+		big.NewInt(0),        // CXMerkleProofReplayFixEpoch
+		big.NewInt(0),        // CXReceiptStateRollbackEpoch
 		big.NewInt(0),        // CrossLinkEpoch
+		big.NewInt(0),        // RejectShard0CrossLinkEpoch
 		big.NewInt(1),        // AggregatedRewardEpoch
 		big.NewInt(1),        // StakingEpoch
 		big.NewInt(0),        // PreStakingEpoch
@@ -436,6 +585,7 @@ var (
 		big.NewInt(0),        // HIP6And8Epoch
 		big.NewInt(0),        // StakingPrecompileEpoch
 		big.NewInt(2),        // EIP2537PrecompileEpoch
+		big.NewInt(0),        // EIP3855Epoch
 		big.NewInt(0),        // ChainIdFixEpoch
 		big.NewInt(0),        // SlotsLimitedEpoch
 		big.NewInt(1),        // CrossShardXferPrecompileEpoch
@@ -454,6 +604,23 @@ var (
 		big.NewInt(0),        // HIP32Epoch
 		big.NewInt(0),        // IsOneSecondEpoch
 		big.NewInt(0),        // EIP1153TransientStorageEpoch
+		big.NewInt(0),        // EIP7939CLZEpoch
+		big.NewInt(0),        // EIP5656McopyEpoch
+		big.NewInt(0),        // EIP3860Epoch
+		big.NewInt(0),        // EIP6780Epoch
+		big.NewInt(0),        // TimestampValidationEpoch
+		big.NewInt(0),        // DuplicateCrossLinkEpoch
+		big.NewInt(0),        // ShardStateValidationEpoch
+		big.NewInt(0),        // PragueEpoch
+		big.NewInt(0),        // EIP8024Epoch
+		big.NewInt(0),        // ValidatorWrapperAddressBindEpoch
+		big.NewInt(0),        // SlashExternalStakeDenomFixEpoch
+		big.NewInt(0),        // RejectDuplicateSlashEvidenceEpoch
+		big.NewInt(1),        // SlashGroupOrderFixEpoch
+		big.NewInt(1),        // BLSProofBindEpoch
+		big.NewInt(1),        // SlashBallotSignerFixEpoch
+		big.NewInt(1),        // VerifyBeaconHeaderSlashEpoch
+		big.NewInt(1),        // BloomEpoch
 	}
 
 	// TestRules ...
@@ -506,9 +673,21 @@ type ChainConfig struct {
 	// processed.
 	CrossTxEpoch *big.Int `json:"cross-tx-epoch,omitempty"`
 
+	// CXMerkleProofReplayFixEpoch is the epoch where CX receipt replay checks
+	// bind merkle proof identity to authenticated source headers.
+	CXMerkleProofReplayFixEpoch *big.Int `json:"cx-merkle-proof-replay-fix-epoch,omitempty"`
+
+	// CXReceiptStateRollbackEpoch is the epoch where EVM frame reverts also
+	// roll back cross-shard receipts created by the cross-shard precompile.
+	CXReceiptStateRollbackEpoch *big.Int `json:"cx-receipt-state-rollback-epoch,omitempty"`
+
 	// CrossLinkEpoch is the epoch where beaconchain starts containing
 	// cross-shard links.
 	CrossLinkEpoch *big.Int `json:"cross-link-epoch,omitempty"`
+
+	// RejectShard0CrossLinkEpoch is the epoch where beacon headers start rejecting
+	// shard-0 cross-links in Header.CrossLinks.
+	RejectShard0CrossLinkEpoch *big.Int `json:"reject-shard0-cross-link-epoch,omitempty"`
 
 	// AggregatedRewardEpoch is the epoch when block rewards are distributed every 64 blocks
 	AggregatedRewardEpoch *big.Int `json:"aggregated-reward-epoch,omitempty"`
@@ -586,6 +765,9 @@ type ChainConfig struct {
 	// EIP2537PrecompileEpoch is the first epoch to support the EIP-2537 precompiles
 	EIP2537PrecompileEpoch *big.Int `json:"eip2537-precompile-epoch,omitempty"`
 
+	// EIP3855Epoch is the first epoch to support EIP-3855 (PUSH0 opcode)
+	EIP3855Epoch *big.Int `json:"eip3855-epoch,omitempty"`
+
 	// ChainIdFixEpoch is the first epoch to return ethereum compatible chain id by ChainID() op code
 	ChainIdFixEpoch *big.Int `json:"chain-id-fix-epoch,omitempty"`
 
@@ -645,11 +827,66 @@ type ChainConfig struct {
 
 	// EIP2537PrecompileEpoch is the first epoch to support the EIP-2537 precompiles
 	EIP1153TransientStorageEpoch *big.Int `json:"eip1153-transient-storage-epoch,omitempty"`
+
+	// EIP7939CLZEpoch is the first epoch to support the EIP-7939 CLZ opcode
+	EIP7939CLZEpoch *big.Int `json:"eip7939-clz-epoch,omitempty"`
+	// EIP5656McopyEpoch is the first epoch to support the EIP-5656 MCOPY opcode
+	EIP5656McopyEpoch *big.Int `json:"eip5656-mcopy-epoch,omitempty"`
+	// EIP3860Epoch is the first epoch to support EIP-3860 (Limit and Meter Initcode)
+	EIP3860Epoch *big.Int `json:"eip3860-epoch,omitempty"`
+	// EIP6780Epoch is the first epoch to support EIP-6780 (deactivate SELFDESTRUCT)
+	EIP6780Epoch *big.Int `json:"eip6780-epoch,omitempty"`
+
+	// TimestampValidationEpoch is the first epoch to enforce strict monotonic
+	// and future-bounded block timestamp checks during header verification.
+	TimestampValidationEpoch *big.Int `json:"timestamp-validation-epoch,omitempty"`
+	// DuplicateCrossLinkEpoch is the first epoch to reject duplicate (shardID,
+	// blockNum) pairs in a beacon block Header.CrossLinks list.
+	DuplicateCrossLinkEpoch *big.Int `json:"duplicate-cross-link-epoch,omitempty"`
+	// ShardStateValidationEpoch is the first epoch to enable additional shard
+	// state validation during header verification.
+	ShardStateValidationEpoch *big.Int `json:"shard-state-validation-epoch,omitempty"`
+	// PragueEpoch is the first epoch to support the Prague feature
+	PragueEpoch *big.Int `json:"prague-epoch,omitempty"`
+	// EIP8024Epoch is the first epoch to support EIP-8024 (DUPN, SWAPN, EXCHANGE opcodes)
+	EIP8024Epoch *big.Int `json:"eip8024-epoch,omitempty"`
+
+	// ValidatorWrapperAddressBindEpoch is the first epoch that requires validator wrapper
+	// RLP address fields to match the account storing the wrapper.
+	ValidatorWrapperAddressBindEpoch *big.Int `json:"validator-wrapper-address-bind-epoch,omitempty"`
+	// SlashExternalStakeDenomFixEpoch is the first epoch where double-sign external delegator
+	// slash uses snapshot self-stake in the external-stake denominator (bug03 / HIP coordination).
+	SlashExternalStakeDenomFixEpoch *big.Int `json:"slash-external-stake-denom-fix-epoch,omitempty"`
+	// RejectDuplicateSlashEvidenceEpoch is the first epoch where beacon header slash
+	// payloads are validated with stricter canonical uniqueness rules. Until set to a
+	// concrete epoch on a network, EpochTBD leaves the rule inactive there.
+	RejectDuplicateSlashEvidenceEpoch *big.Int `json:"reject-duplicate-slash-evidence-epoch,omitempty"`
+	// SlashGroupOrderFixEpoch is the first epoch to apply slash groups in a
+	// canonical lexicographic order during beacon-chain finalization.
+	SlashGroupOrderFixEpoch *big.Int `json:"slash-group-order-fix-epoch,omitempty"`
+	// BLSProofBindEpoch is the first epoch that binds BLS proof-of-possession
+	// signatures to the validator address and rejects duplicate BLS keys among
+	// validators created earlier in the same block.
+	BLSProofBindEpoch *big.Int `json:"bls-proof-bind-epoch,omitempty"`
+	// SlashBallotSignerFixEpoch is the first epoch where slash verification requires
+	// ballot signer keys to match the double-sign intersection and verifies
+	// signatures against that intersection only. Until set to a concrete epoch on
+	// a network, EpochTBD leaves the rule inactive there.
+	SlashBallotSignerFixEpoch *big.Int `json:"slash-ballot-signer-fix-epoch,omitempty"`
+	// VerifyBeaconHeaderSlashEpoch is the first epoch where beacon header slash
+	// records are validated before block finalization. Until set to a concrete
+	// epoch on a network, EpochTBD leaves the rule inactive there.
+	VerifyBeaconHeaderSlashEpoch *big.Int `json:"verify-beacon-header-slash-epoch,omitempty"`
+
+	// BloomEpoch is the epoch of the Bloom hardfork. Bloom-bundled features also
+	// have individual activation epochs; each feature is active once the chain
+	// reaches the earlier of BloomEpoch and that feature's epoch.
+	BloomEpoch *big.Int `json:"bloom-epoch,omitempty"`
 }
 
 // String implements the fmt.Stringer interface.
 func (c *ChainConfig) String() string {
-	return fmt.Sprintf("{ChainID: %v EthCompatibleChainID: %v EIP155: %v CrossTx: %v Staking: %v CrossLink: %v ReceiptLog: %v SHA3Epoch: %v StakingPrecompileEpoch: %v ChainIdFixEpoch: %v CrossShardXferPrecompileEpoch: %v EIP2537PrecompileEpoch: %v EIP1153TransientStorageEpoch: %v}",
+	return fmt.Sprintf("{ChainID: %v EthCompatibleChainID: %v EIP155: %v CrossTx: %v Staking: %v CrossLink: %v ReceiptLog: %v SHA3Epoch: %v StakingPrecompileEpoch: %v ChainIdFixEpoch: %v CrossShardXferPrecompileEpoch: %v EIP2537PrecompileEpoch: %v EIP1153TransientStorageEpoch: %v EIP7939CLZEpoch: %v EIP5656McopyEpoch: %v EIP3860Epoch: %v EIP6780Epoch: %v PragueEpoch: %v EIP8024Epoch: %v}",
 		c.ChainID,
 		c.EthCompatibleChainID,
 		c.EIP155Epoch,
@@ -663,6 +900,12 @@ func (c *ChainConfig) String() string {
 		c.CrossShardXferPrecompileEpoch,
 		c.EIP2537PrecompileEpoch,
 		c.EIP1153TransientStorageEpoch,
+		c.EIP7939CLZEpoch,
+		c.EIP5656McopyEpoch,
+		c.EIP3860Epoch,
+		c.EIP6780Epoch,
+		c.PragueEpoch,
+		c.EIP8024Epoch,
 	)
 }
 
@@ -718,6 +961,13 @@ func (c *ChainConfig) mustValid() {
 	// eip-2537 is applied on or after hip30
 	require(c.EIP2537PrecompileEpoch.Cmp(c.HIP30Epoch) >= 0,
 		"must satisfy: EIP2537PrecompileEpoch >= HIP30Epoch")
+	// slash groups are only applied in the staking era
+	require(c.SlashGroupOrderFixEpoch == nil || c.SlashGroupOrderFixEpoch.Cmp(c.StakingEpoch) >= 0,
+		"must satisfy: SlashGroupOrderFixEpoch >= StakingEpoch")
+	require(c.SlashBallotSignerFixEpoch == nil || c.SlashBallotSignerFixEpoch.Cmp(c.StakingEpoch) >= 0,
+		"must satisfy: SlashBallotSignerFixEpoch >= StakingEpoch")
+	require(c.VerifyBeaconHeaderSlashEpoch == nil || c.VerifyBeaconHeaderSlashEpoch.Cmp(c.StakingEpoch) >= 0,
+		"must satisfy: VerifyBeaconHeaderSlashEpoch >= StakingEpoch")
 }
 
 // IsEIP155 returns whether epoch is either equal to the EIP155 fork epoch or greater.
@@ -743,6 +993,17 @@ func (c *ChainConfig) AcceptsCrossTx(epoch *big.Int) bool {
 // cross-shard transaction fields.
 func (c *ChainConfig) HasCrossTxFields(epoch *big.Int) bool {
 	return isForked(c.CrossTxEpoch, epoch)
+}
+
+// IsCXMerkleProofReplayFixEpoch determines whether replay-fix checks are enabled.
+func (c *ChainConfig) IsCXMerkleProofReplayFixEpoch(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.CXMerkleProofReplayFixEpoch, epoch)
+}
+
+// IsCXReceiptStateRollback returns whether EVM frame reverts also roll back
+// cross-shard receipts created by the cross-shard precompile.
+func (c *ChainConfig) IsCXReceiptStateRollback(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.CXReceiptStateRollbackEpoch, epoch)
 }
 
 // IsEthCompatible determines whether it is ethereum compatible epoch
@@ -777,6 +1038,28 @@ func (c *ChainConfig) IsTwoSeconds(epoch *big.Int) bool {
 
 func (c *ChainConfig) IsOneSecond(epoch *big.Int) bool {
 	return isForked(c.IsOneSecondEpoch, epoch)
+}
+
+// IsTimestampValidation determines whether timestamp hardfork checks are enabled.
+func (c *ChainConfig) IsTimestampValidation(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.TimestampValidationEpoch, epoch)
+}
+
+// IsSlashExternalStakeDenomFix returns whether double-sign slashing uses snapshot self-stake
+// for the external delegator slash denominator.
+func (c *ChainConfig) IsSlashExternalStakeDenomFix(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.SlashExternalStakeDenomFixEpoch, epoch)
+}
+
+// IsDuplicateCrossLinkRejection determines whether duplicate cross-links in a
+// beacon block header are rejected.
+func (c *ChainConfig) IsDuplicateCrossLinkRejection(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.DuplicateCrossLinkEpoch, epoch)
+}
+
+// IsShardStateValidation returns whether additional shard state header validation is active.
+func (c *ChainConfig) IsShardStateValidation(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.ShardStateValidationEpoch, epoch)
 }
 
 // IsSixtyPercent determines whether it is the epoch to reduce internal voting power to 60%
@@ -834,6 +1117,12 @@ func (c *ChainConfig) IsCrossLink(epoch *big.Int) bool {
 	return isForked(c.CrossLinkEpoch, epoch)
 }
 
+// IsRejectShard0CrossLink determines whether shard-0 cross-links in beacon
+// header CrossLinks are rejected by consensus.
+func (c *ChainConfig) IsRejectShard0CrossLink(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.RejectShard0CrossLinkEpoch, epoch)
+}
+
 // IsS3 returns whether epoch is either equal to the S3 fork epoch or greater.
 func (c *ChainConfig) IsS3(epoch *big.Int) bool {
 	return isForked(c.S3Epoch, epoch)
@@ -881,12 +1170,49 @@ func (c *ChainConfig) IsCrossShardXferPrecompile(epoch *big.Int) bool {
 // IsEIP2537Precompiles determines whether EIP-2537
 // precompiles are available in the EVM
 func (c *ChainConfig) IsEIP2537Precompile(epoch *big.Int) bool {
-	return isForked(c.EIP2537PrecompileEpoch, epoch)
+	return c.isBloomFeatureActive(c.EIP2537PrecompileEpoch, epoch)
 }
 
 // IsEIP1153TransientStorage determines whether EIP-1153 transient storage is available in the EVM
 func (c *ChainConfig) IsEIP1153TransientStorage(epoch *big.Int) bool {
-	return isForked(c.EIP1153TransientStorageEpoch, epoch)
+	return c.isBloomFeatureActive(c.EIP1153TransientStorageEpoch, epoch)
+}
+
+// IsEIP7939CLZ determines whether EIP-7939 CLZ opcode is available in the EVM
+func (c *ChainConfig) IsEIP7939CLZ(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.EIP7939CLZEpoch, epoch)
+}
+
+// IsEIP5656Mcopy determines whether EIP-5656 MCOPY opcode is available in the EVM
+func (c *ChainConfig) IsEIP5656Mcopy(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.EIP5656McopyEpoch, epoch)
+}
+
+// IsEIP3855 determines whether EIP-3855 (PUSH0 opcode)
+// is available in the EVM
+func (c *ChainConfig) IsEIP3855(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.EIP3855Epoch, epoch)
+}
+
+// IsEIP6780 determines whether EIP-6780 (deactivate SELFDESTRUCT) is active
+func (c *ChainConfig) IsEIP6780(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.EIP6780Epoch, epoch)
+}
+
+// IsEIP3860 determines whether EIP-3860 (Limit and Meter Initcode) is enabled
+func (c *ChainConfig) IsEIP3860(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.EIP3860Epoch, epoch)
+}
+
+// IsEIP8024 determines whether EIP-8024 (DUPN, SWAPN, EXCHANGE) is available in the EVM
+func (c *ChainConfig) IsEIP8024(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.EIP8024Epoch, epoch)
+}
+
+// IsRejectDuplicateSlashEvidence returns whether stricter beacon header slash
+// payload checks are active for the given epoch.
+func (c *ChainConfig) IsRejectDuplicateSlashEvidence(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.RejectDuplicateSlashEvidenceEpoch, epoch)
 }
 
 // IsChainIdFix returns whether epoch is either equal to the ChainId Fix fork epoch or greater.
@@ -896,7 +1222,7 @@ func (c *ChainConfig) IsChainIdFix(epoch *big.Int) bool {
 
 // IsAllowlistEpoch determines whether IsAllowlist of HIP18 is enabled
 func (c *ChainConfig) IsAllowlistEpoch(epoch *big.Int) bool {
-	return isForked(c.AllowlistEpoch, epoch)
+	return c.isBloomFeatureActive(c.AllowlistEpoch, epoch)
 }
 
 func (c *ChainConfig) IsLeaderRotationInternalValidators(epoch *big.Int) bool {
@@ -912,7 +1238,7 @@ func (c *ChainConfig) IsLeaderRotationExternalValidatorsAllowed(epoch *big.Int) 
 }
 
 func (c *ChainConfig) IsLeaderRotationV2Epoch(epoch *big.Int) bool {
-	return isForked(c.LeaderRotationV2Epoch, epoch)
+	return c.isBloomFeatureActive(c.LeaderRotationV2Epoch, epoch)
 }
 
 // IsFeeCollectEpoch determines whether Txn Fees will be collected into the community-managed account.
@@ -922,6 +1248,32 @@ func (c *ChainConfig) IsFeeCollectEpoch(epoch *big.Int) bool {
 
 func (c *ChainConfig) IsValidatorCodeFix(epoch *big.Int) bool {
 	return isForked(c.ValidatorCodeFixEpoch, epoch)
+}
+
+func (c *ChainConfig) IsSlashGroupOrderFix(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.SlashGroupOrderFixEpoch, epoch)
+}
+
+// IsValidatorWrapperAddressBind requires wrapper.Address to match the loading account.
+func (c *ChainConfig) IsValidatorWrapperAddressBind(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.ValidatorWrapperAddressBindEpoch, epoch)
+}
+
+// IsBLSProofBind requires BLS proof-of-possession to be bound to validator address.
+func (c *ChainConfig) IsBLSProofBind(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.BLSProofBindEpoch, epoch)
+}
+
+// IsSlashBallotSignerFix returns whether slash verification uses stricter ballot
+// signer key rules during double-sign evidence checks.
+func (c *ChainConfig) IsSlashBallotSignerFix(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.SlashBallotSignerFixEpoch, epoch)
+}
+
+// IsVerifyBeaconHeaderSlash returns whether beacon header slash records must
+// pass validation before block finalization for the given epoch.
+func (c *ChainConfig) IsVerifyBeaconHeaderSlash(epoch *big.Int) bool {
+	return c.isBloomFeatureActive(c.VerifyBeaconHeaderSlashEpoch, epoch)
 }
 
 func (c *ChainConfig) IsHIP32(epoch *big.Int) bool {
@@ -946,6 +1298,10 @@ func (c *ChainConfig) IsMaxRate(epoch *big.Int) bool {
 
 func (c *ChainConfig) IsTopMaxRate(epoch *big.Int) bool {
 	return isForked(c.TopMaxRateEpoch, epoch)
+}
+
+func (c *ChainConfig) IsPrague(epoch *big.Int) bool {
+	return isForked(c.PragueEpoch, epoch)
 }
 
 // During this epoch, shards 2 and 3 will start sending
@@ -996,6 +1352,30 @@ func isForked(s, epoch *big.Int) bool {
 	return s.Cmp(epoch) <= 0
 }
 
+// earliestActivation returns the earlier of two fork activation epochs.
+func earliestActivation(a, b *big.Int) *big.Int {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	if a.Cmp(b) <= 0 {
+		return a
+	}
+	return b
+}
+
+// isBloomFeatureActive reports whether a Bloom-bundled feature is active at epoch.
+func (c *ChainConfig) isBloomFeatureActive(featureEpoch, epoch *big.Int) bool {
+	return isForked(earliestActivation(c.BloomEpoch, featureEpoch), epoch)
+}
+
+// IsBloom returns whether the Bloom hardfork is active at the given epoch.
+func (c *ChainConfig) IsBloom(epoch *big.Int) bool {
+	return isForked(c.BloomEpoch, epoch)
+}
+
 // Rules wraps ChainConfig and is merely syntactic sugar or can be used for functions
 // that do not have or require information about the block.
 //
@@ -1017,9 +1397,17 @@ type Rules struct {
 	IsEIP2537Precompile,
 	// eip-155 chain id fix
 	IsChainIdFix bool
-	IsValidatorCodeFix     bool
-	IsYoloV2               bool
-	Is1153TransientStorage bool
+	IsValidatorCodeFix       bool
+	IsYoloV2                 bool
+	Is1153TransientStorage   bool
+	Is7939CLZ                bool
+	IsEIP5656Mcopy           bool
+	IsEIP3855                bool
+	IsEIP6780                bool
+	Is3860                   bool
+	IsPrague                 bool // EIP-2935: Serve historical block hashes from state
+	Is8024                   bool
+	IsCXReceiptStateRollback bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -1052,5 +1440,13 @@ func (c *ChainConfig) Rules(epoch *big.Int) Rules {
 		IsValidatorCodeFix:         c.IsValidatorCodeFix(epoch),
 		IsEIP2537Precompile:        c.IsEIP2537Precompile(epoch),
 		Is1153TransientStorage:     c.IsEIP1153TransientStorage(epoch),
+		Is7939CLZ:                  c.IsEIP7939CLZ(epoch),
+		IsEIP5656Mcopy:             c.IsEIP5656Mcopy(epoch),
+		IsEIP3855:                  c.IsEIP3855(epoch),
+		IsEIP6780:                  c.IsEIP6780(epoch),
+		Is3860:                     c.IsEIP3860(epoch),
+		IsPrague:                   c.IsPrague(epoch),
+		Is8024:                     c.IsEIP8024(epoch),
+		IsCXReceiptStateRollback:   c.IsCXReceiptStateRollback(epoch),
 	}
 }

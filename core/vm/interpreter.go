@@ -77,18 +77,30 @@ type EVMInterpreter struct {
 func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 	// If jump table was not initialised we set the default one.
 	if cfg.JumpTable == nil {
-		switch {
-		case evm.chainRules.Is1153TransientStorage:
-			cfg.JumpTable = &eip1153InstructionSet
-		case evm.chainRules.IsIstanbul:
-			cfg.JumpTable = &istanbulInstructionSet
-		case evm.chainRules.IsS3:
-			cfg.JumpTable = &constantinopleInstructionSet
-		default:
-			cfg.JumpTable = &frontierInstructionSet
+		cfg.JumpTable = jumpTableForRules(evm.chainRules)
+		// Automatically enable EIP-6780 if the chain rule is active
+		if evm.chainRules.IsEIP6780 {
+			copy := copyJumpTable(cfg.JumpTable)
+			if err := EnableEIP(6780, &copy); err != nil {
+				log.Error("EIP-6780 activation failed", "error", err)
+			} else {
+				cfg.JumpTable = &copy
+			}
+		}
+		// Automatically enable EIP-3855 if the epoch is reached
+		if evm.chainRules.IsEIP3855 {
+			cfg.ExtraEips = append(cfg.ExtraEips, 3855)
+		}
+		// Automatically enable EIP-3860 if the epoch is reached
+		if evm.chainRules.Is3860 {
+			cfg.ExtraEips = append(cfg.ExtraEips, 3860)
+		}
+		// Automatically enable EIP-8024 if the epoch is reached
+		if evm.chainRules.Is8024 {
+			cfg.ExtraEips = append(cfg.ExtraEips, 8024)
 		}
 		for i, eip := range cfg.ExtraEips {
-			copy := *cfg.JumpTable
+			copy := copyJumpTable(cfg.JumpTable)
 			if err := EnableEIP(eip, &copy); err != nil {
 				// Disable it, so caller can check if it's activated or not
 				cfg.ExtraEips = append(cfg.ExtraEips[:i], cfg.ExtraEips[i+1:]...)
