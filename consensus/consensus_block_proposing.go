@@ -17,24 +17,25 @@ import (
 
 // Constants of proposing a new block
 const (
-	IncomingReceiptsLimit = 6000 // 2000 * (numShards - 1)
+	IncomingReceiptsLimit = 2000 // 2000 * (numShards - 1)
 	SleepPeriod           = 20 * time.Millisecond
 )
 
 // ProposeNewBlock proposes a new block...
-func (consensus *Consensus) ProposeNewBlock(commitSigs chan []byte) (*types.Block, error) {
+func (consensus *Consensus) ProposeNewBlock(now time.Time, commitSigs chan []byte) (*types.Block, error) {
 	var (
 		currentHeader = consensus.Blockchain().CurrentHeader()
 		nowEpoch      = currentHeader.Epoch()
 		blockNow      = currentHeader.Number()
 		worker        = consensus.registry.GetWorker()
 	)
+
 	utils.AnalysisStart("ProposeNewBlock", nowEpoch, blockNow)
 	defer utils.AnalysisEnd("ProposeNewBlock", nowEpoch, blockNow)
 
 	// Update worker's current header and
-	// state data in preparation to propose/process new transactions
-	env, err := worker.UpdateCurrent()
+	// state data in preparation to propose/process new transactions.
+	env, err := worker.UpdateCurrent(now)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to update worker")
 	}

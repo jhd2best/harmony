@@ -48,8 +48,12 @@ var (
 
 	httpListener     net.Listener
 	httpHandler      *rpc.Server
+	httpAuthListener net.Listener
+	httpAuthHandler  *rpc.Server
 	wsListener       net.Listener
 	wsHandler        *rpc.Server
+	wsAuthListener   net.Listener
+	wsAuthHandler    *rpc.Server
 	httpEndpoint     = ""
 	httpAuthEndpoint = ""
 	wsEndpoint       = ""
@@ -131,6 +135,19 @@ func StopServers() error {
 		httpHandler.Stop()
 		httpHandler = nil
 	}
+	if httpAuthListener != nil {
+		if err := httpAuthListener.Close(); err != nil {
+			return err
+		}
+		httpAuthListener = nil
+		utils.Logger().Info().
+			Str("url", fmt.Sprintf("http://%s", httpAuthEndpoint)).
+			Msg("HTTP auth endpoint closed")
+	}
+	if httpAuthHandler != nil {
+		httpAuthHandler.Stop()
+		httpAuthHandler = nil
+	}
 	if wsListener != nil {
 		if err := wsListener.Close(); err != nil {
 			return err
@@ -144,13 +161,26 @@ func StopServers() error {
 		wsHandler.Stop()
 		wsHandler = nil
 	}
+	if wsAuthListener != nil {
+		if err := wsAuthListener.Close(); err != nil {
+			return err
+		}
+		wsAuthListener = nil
+		utils.Logger().Info().
+			Str("url", fmt.Sprintf("ws://%s", wsAuthEndpoint)).
+			Msg("WebSocket auth endpoint closed")
+	}
+	if wsAuthHandler != nil {
+		wsAuthHandler.Stop()
+		wsAuthHandler = nil
+	}
 	return nil
 }
 
 func getAuthAPIs(hmy *hmy.Harmony, debugEnable bool, rateLimiterEnable bool, ratelimit int) []rpc.API {
 	return []rpc.API{
-		NewPublicTraceAPI(hmy, Debug), // Debug version means geth trace rpc
-		NewPublicTraceAPI(hmy, Trace), // Trace version means parity trace rpc
+		NewPublicTraceAPI(hmy, Debug, rateLimiterEnable, ratelimit), // Debug version means geth trace rpc
+		NewPublicTraceAPI(hmy, Trace, rateLimiterEnable, ratelimit), // Trace version means parity trace rpc
 	}
 }
 
@@ -180,8 +210,8 @@ func getAPIs(hmy *hmy.Harmony, config nodeconfig.RPCServerConfig) []rpc.API {
 
 	if config.StakingRPCsEnabled {
 		publicAPIs = append(publicAPIs,
-			NewPublicStakingAPI(hmy, V1),
-			NewPublicStakingAPI(hmy, V2),
+			NewPublicStakingAPI(hmy, V1, config.RateLimiterEnabled),
+			NewPublicStakingAPI(hmy, V2, config.RateLimiterEnabled),
 		)
 	}
 
@@ -232,7 +262,7 @@ func startHTTP(apis []rpc.API, rmf *rpc.RpcMethodFilter, httpTimeouts rpc.HTTPTi
 }
 
 func startAuthHTTP(apis []rpc.API, rmf *rpc.RpcMethodFilter, httpTimeouts rpc.HTTPTimeouts) (err error) {
-	httpListener, httpHandler, err = rpc.StartHTTPEndpoint(
+	httpAuthListener, httpAuthHandler, err = rpc.StartHTTPEndpoint(
 		httpAuthEndpoint, apis, HTTPModules, rmf, httpOrigins, httpVirtualHosts, httpTimeouts,
 	)
 	if err != nil {
@@ -262,13 +292,13 @@ func startWS(apis []rpc.API, rmf *rpc.RpcMethodFilter) (err error) {
 }
 
 func startAuthWS(apis []rpc.API, rmf *rpc.RpcMethodFilter) (err error) {
-	wsListener, wsHandler, err = rpc.StartWSEndpoint(wsAuthEndpoint, apis, WSModules, rmf, wsOrigins, true)
+	wsAuthListener, wsAuthHandler, err = rpc.StartWSEndpoint(wsAuthEndpoint, apis, WSModules, rmf, wsOrigins, true)
 	if err != nil {
 		return err
 	}
 
 	utils.Logger().Info().
-		Str("url", fmt.Sprintf("ws://%s", wsListener.Addr())).
+		Str("url", fmt.Sprintf("ws://%s", wsAuthListener.Addr())).
 		Msg("WebSocket Auth-WS endpoint opened")
 	fmt.Printf("Started Auth-WS server at: %v\n", wsAuthEndpoint)
 	return nil

@@ -57,20 +57,36 @@ const (
 func NewPublicBlockchainAPI(hmy *hmy.Harmony, version Version, limiterEnable bool, limit int) rpc.API {
 	var limiter *rate.Limiter
 	if limiterEnable {
-		limiter = rate.NewLimiter(rate.Limit(limit), limit)
-		name := reflect.TypeOf(limiter).Elem().Name()
-		rpcRateLimitCounterVec.With(prometheus.Labels{
-			"limiter_name": name,
-		}).Add(float64(0))
+		if limit > 0 {
+			limiter = rate.NewLimiter(rate.Limit(limit), limit)
+			name := reflect.TypeOf(limiter).Elem().Name()
+			rpcRateLimitCounterVec.With(prometheus.Labels{
+				"limiter_name": name,
+			}).Add(float64(0))
+		} else {
+			utils.Logger().Warn().
+				Int("rpc_ratelimit", limit).
+				Msg("Disabling RPC rate limiter due to non-positive RequestsPerSecond")
+		}
+	}
+
+	var limiterGetStakingNetworkInfo *rate.Limiter
+	var limiterGetSuperCommittees *rate.Limiter
+	var limiterGetCurrentUtilityMetrics *rate.Limiter
+	if limiterEnable {
+		// TEMP SOLUTION to rpc node spamming issue
+		limiterGetStakingNetworkInfo = rate.NewLimiter(5, 10)
+		limiterGetSuperCommittees = rate.NewLimiter(5, 10)
+		limiterGetCurrentUtilityMetrics = rate.NewLimiter(5, 10)
 	}
 
 	s := &PublicBlockchainService{
 		hmy:                             hmy,
 		version:                         version,
 		limiter:                         limiter,
-		limiterGetStakingNetworkInfo:    rate.NewLimiter(5, 10),
-		limiterGetSuperCommittees:       rate.NewLimiter(5, 10),
-		limiterGetCurrentUtilityMetrics: rate.NewLimiter(5, 10),
+		limiterGetStakingNetworkInfo:    limiterGetStakingNetworkInfo,
+		limiterGetSuperCommittees:       limiterGetSuperCommittees,
+		limiterGetCurrentUtilityMetrics: limiterGetCurrentUtilityMetrics,
 	}
 	s.helper = s.newHelper()
 
@@ -1067,7 +1083,19 @@ const (
 func (s *PublicBlockchainService) InSync(ctx context.Context) (bool, error) {
 	timer := DoMetricRPCRequest(InSync)
 	defer DoRPCRequestDuration(InSync, timer)
+
+	// First check with cached sync status
 	inSync, _, diff := s.hmy.NodeAPI.SyncStatus(s.hmy.BlockChain.ShardID())
+
+	// If cached status shows in sync but difference is significant,
+	// log a warning about potential cache staleness
+	if inSync && diff > inSyncTolerance*2 {
+		utils.Logger().Warn().
+			Uint64("cachedDiff", diff).
+			Int("tolerance", inSyncTolerance).
+			Msg("[RPC] Cached sync status shows in sync but with large difference - cache may be stale")
+	}
+
 	if !inSync && diff <= inSyncTolerance {
 		inSync = true
 	}

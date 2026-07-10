@@ -355,10 +355,11 @@ func (w *Worker) CommitReceipts(receiptsList []*types.CXReceiptsProof) error {
 }
 
 // UpdateCurrent updates the current environment with the current state and header.
-func (w *Worker) UpdateCurrent() (Environment, error) {
+// now is the current time (optionally NTP-corrected) used for the block timestamp.
+func (w *Worker) UpdateCurrent(now time.Time) (Environment, error) {
 	parent := w.chain.CurrentHeader()
 	num := parent.Number()
-	timestamp := time.Now().Unix()
+	timestamp := now.Unix()
 
 	epoch := GetNewEpoch(w.chain)
 	header := w.factory.NewHeader(epoch).With().
@@ -491,12 +492,13 @@ func (w *Worker) verifySlashes(
 			utils.Logger().Warn().
 				Interface("slashRecord1", existing).
 				Interface("slashRecord2", d[i]).
-				Msg("Duplicate slash records with different reporters")
+				Msg("Skipping duplicate slash evidence in slash candidate batch")
 			failures = append(failures, d[i])
+			continue
 		} else {
 			seenEvidences[evidenceHash] = struct{}{}
 
-			// In addition, need to count the same evidence with first and second vote swapped as seen
+			// Register an alternate canonical encoding so equivalent evidence is not double-counted
 			swapVote := d[i].Evidence
 			tmp := swapVote.ConflictingVotes.FirstVote
 			swapVote.ConflictingVotes.FirstVote = swapVote.ConflictingVotes.SecondVote
