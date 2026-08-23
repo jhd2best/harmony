@@ -54,6 +54,9 @@ func NewBlockValidator(blockchain BlockChain) *BlockValidator {
 // ValidateBody verifies the block header's transaction root.
 // The headers are assumed to be already validated at this point.
 func (v *BlockValidator) ValidateBody(block *types.Block) error {
+	if err := validateBlockHashes(block); err != nil {
+		return err
+	}
 	// Check whether the block's known, and if not, that it's linkable
 	if v.bc.HasBlockAndState(block.Hash(), block.NumberU64()) {
 		return errors.WithMessage(ErrKnownBlock, "validate body: has block and state")
@@ -181,6 +184,21 @@ func (v *BlockValidator) ValidateCXReceiptsProof(cxp *types.CXReceiptsProof) err
 	}
 
 	merkleProof := cxp.MerkleProof
+	if merkleProof == nil {
+		return errors.New("[ValidateCXReceiptsProof] missing merkle proof")
+	}
+	// ShardIDs and CXShardHashes are separate RLP lists that together describe one
+	// destination shard per position, and the loop below reads a hash for every
+	// shard id. A list with fewer hashes than shard ids has no hash to read for
+	// the positions past its end. Hashes beyond the last shard id are never read,
+	// and are left accepted here so that this agrees with the previous release on
+	// which proofs are valid.
+	if len(merkleProof.CXShardHashes) < len(merkleProof.ShardIDs) {
+		return errors.Errorf(
+			"[ValidateCXReceiptsProof] merkle proof has %d shardIDs but only %d CXShardHashes",
+			len(merkleProof.ShardIDs), len(merkleProof.CXShardHashes),
+		)
+	}
 	shardRoot := common.Hash{}
 	foundMatchingShardID := false
 	byteBuffer := bytes.Buffer{}

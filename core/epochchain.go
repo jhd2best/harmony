@@ -123,6 +123,9 @@ func (bc *EpochChain) InsertChain(blocks types.Blocks, _ bool) (int, error) {
 		<-bc.mu
 	}()
 	for i, block := range blocks {
+		if err := validateBlockHashes(block); err != nil {
+			return i, err
+		}
 		if !block.IsLastBlockInEpoch() {
 			return i, ErrNotLastBlockInEpoch
 		}
@@ -282,6 +285,9 @@ func (bc *EpochChain) writeShardStateBytes(db rawdb.DatabaseWriter,
 
 // WriteHeadBlock writes a new head block.
 func (bc *EpochChain) WriteHeadBlock(block *types.Block) error {
+	if err := validateBlockHashes(block); err != nil {
+		return err
+	}
 	batch := bc.db.NewBatch()
 	se, err := bc.writeHeadBlock(batch, block)
 	if err != nil {
@@ -321,8 +327,15 @@ func (bc *EpochChain) IsSameLeaderAsPreviousBlock(block *types.Block) bool {
 	return block.Coinbase() == previousHeader.Coinbase()
 }
 
+// GetVMConfig returns the chain VM config. See BlockChainImpl.GetVMConfig for
+// why this is a copy.
 func (bc *EpochChain) GetVMConfig() *vm.Config {
-	return bc.vmConfig
+	if bc.vmConfig == nil {
+		return nil
+	}
+	cfg := *bc.vmConfig
+	cfg.ExtraEips = append([]int(nil), bc.vmConfig.ExtraEips...)
+	return &cfg
 }
 
 func (bc *EpochChain) CommitPreimages() error {

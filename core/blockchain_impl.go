@@ -459,6 +459,13 @@ func VerifyIncomingReceipts(blockchain BlockChain, block *types.Block) error {
 	m := make(map[common.Hash]struct{})
 	cxps := block.IncomingReceipts()
 	for _, cxp := range cxps {
+		// The spent lookup and the duplicate key below are both derived from the
+		// merkle proof and the header, so a proof is only usable here once those
+		// fields are present.
+		if cxp == nil || cxp.MerkleProof == nil || cxp.MerkleProof.BlockNum == nil ||
+			cxp.Header == nil {
+			return errors.New("[verifyIncomingReceipts] incomplete CXReceiptsProof")
+		}
 		// double spent
 		if blockchain.IsSpent(cxp) {
 			return errDoubleSpent
@@ -951,6 +958,9 @@ func (bc *BlockChainImpl) ExportN(w io.Writer, first uint64, last uint64) error 
 }
 
 func (bc *BlockChainImpl) WriteHeadBlock(block *types.Block) error {
+	if err := validateBlockHashes(block); err != nil {
+		return err
+	}
 	return bc.writeHeadBlock(block)
 }
 
@@ -1008,6 +1018,9 @@ func (bc *BlockChainImpl) writeHeadBlock(block *types.Block) error {
 
 // tikvFastForward writes a new head block in tikv mode, used for reader node or follower writer node
 func (bc *BlockChainImpl) tikvFastForward(block *types.Block, logs []*types.Log) error {
+	if err := validateBlockHashes(block); err != nil {
+		return err
+	}
 	bc.currentBlock.Store(block)
 	headBlockGauge.Update(int64(block.NumberU64()))
 
@@ -1439,6 +1452,9 @@ func (bc *BlockChainImpl) InsertReceiptChain(blockChain types.Blocks, receiptCha
 		batch = bc.db.NewBatch()
 	)
 	for i, block := range blockChain {
+		if err := validateBlockHashes(block); err != nil {
+			return i, err
+		}
 		receipts := receiptChain[i]
 		// Short circuit insertion if shutting down or processing failed
 		if atomic.LoadInt32(&bc.procInterrupt) == 1 {
@@ -1523,6 +1539,9 @@ func (bc *BlockChainImpl) InsertReceiptChain(blockChain types.Blocks, receiptCha
 var lastWrite uint64
 
 func (bc *BlockChainImpl) WriteBlockWithoutState(block *types.Block) (err error) {
+	if err := validateBlockHashes(block); err != nil {
+		return err
+	}
 	bc.chainmu.Lock()
 	defer bc.chainmu.Unlock()
 
@@ -1540,6 +1559,9 @@ func (bc *BlockChainImpl) WriteBlockWithState(
 	paid reward.Reader,
 	state *state.DB,
 ) (status WriteStatus, err error) {
+	if err := validateBlockHashes(block); err != nil {
+		return NonStatTy, err
+	}
 	currentBlock := bc.CurrentBlock()
 	if currentBlock == nil {
 		return NonStatTy, errors.New("Current block is nil")
@@ -1690,6 +1712,12 @@ func (bc *BlockChainImpl) GetMaxGarbageCollectedBlockNumber() int64 {
 func (bc *BlockChainImpl) InsertChain(chain types.Blocks, verifyHeaders bool) (int, error) {
 	if bc.shardID == 0 {
 		return len(chain), nil
+	}
+	
+	for i, block := range chain {
+		if err := validateBlockHashes(block); err != nil {
+			return i, err
+		}
 	}
 
 	// if in tikv mode, writer node need preempt master or come be a follower
@@ -1857,6 +1885,24 @@ func (bc *BlockChainImpl) insertChain(chain types.Blocks, verifyHeaders bool) (i
 		case err != nil:
 			bc.reportBlock(block, nil, err)
 			return i, events, coalescedLogs, err
+		}
+
+		// Incoming cross-shard receipts credit balances during Process, and what
+		// makes them legitimate lives outside this block: the source shard's
+		// signed header, the merkle proof binding the receipts to it, and the
+		// spent markers recording which proofs this shard has already applied.
+		// None of that is covered by the header or state root checks, so the
+		// proofs are verified here before the block is processed. The markers for
+		// this block are only written later, in WriteBlockWithState.
+		//
+		// Blocks arriving through consensus are already checked in
+		// ValidateNewBlock; this covers the remaining paths into the chain, and is
+		// epoch gated because it decides block acceptance.
+		if bc.chainConfig.IsStrictStateValidation(block.Epoch()) {
+			if err := VerifyIncomingReceipts(bc, block); err != nil {
+				bc.reportBlock(block, nil, err)
+				return i, events, coalescedLogs, err
+			}
 		}
 
 		// Create a new statedb using the parent block and report an
@@ -2675,8 +2721,13 @@ func (bc *BlockChainImpl) IsSameLeaderAsPreviousBlock(block *types.Block) bool {
 	return block.Coinbase() == previousHeader.Coinbase()
 }
 
+// GetVMConfig returns the blockchain VM config. The returned config is a copy:
+// callers that adjust it for their own execution, a tracer for instance, would
+// otherwise be changing the configuration blocks are processed with.
 func (bc *BlockChainImpl) GetVMConfig() *vm.Config {
-	return &bc.vmConfig
+	cfg := bc.vmConfig
+	cfg.ExtraEips = append([]int(nil), bc.vmConfig.ExtraEips...)
+	return &cfg
 }
 
 func (bc *BlockChainImpl) ReadCXReceipts(shardID uint32, blockNum uint64, blockHash common.Hash) (types.CXReceipts, error) {
@@ -2712,7 +2763,14 @@ func (bc *BlockChainImpl) CXMerkleProof(toShardID uint32, block *block.Header) (
 
 func (bc *BlockChainImpl) WriteCXReceiptsProofSpent(db rawdb.DatabaseWriter, cxps []*types.CXReceiptsProof) error {
 	for _, cxp := range cxps {
-		if cxp.Header != nil && bc.Config().IsCXMerkleProofReplayFixEpoch(cxp.Header.Epoch()) {
+		// Key the spent-marker off the signed Header, not the unauthenticated
+		// MerkleProof.ShardID/BlockNum: those fields are only bound to the
+		// Header by ValidateCXReceiptsProof from IsCXMerkleProofReplayFixEpoch
+		// onward, so a proof claiming an earlier epoch can carry a mutated
+		// MerkleProof while keeping a genuine Header/signature. Deriving the
+		// key from MerkleProof would let such a mutated copy of an already
+		//-applied receipt look unspent and be replayed for a fresh credit.
+		if cxp.Header != nil {
 			if err := rawdb.WriteCXReceiptsProofSpentWithKey(
 				db, cxp.Header.ShardID(), cxp.Header.Number().Uint64(),
 			); err != nil {
@@ -2730,7 +2788,10 @@ func (bc *BlockChainImpl) WriteCXReceiptsProofSpent(db rawdb.DatabaseWriter, cxp
 func (bc *BlockChainImpl) IsSpent(cxp *types.CXReceiptsProof) bool {
 	shardID := cxp.MerkleProof.ShardID
 	blockNum := cxp.MerkleProof.BlockNum.Uint64()
-	if cxp.Header != nil && bc.Config().IsCXMerkleProofReplayFixEpoch(cxp.Header.Epoch()) {
+	// See WriteCXReceiptsProofSpent: always resolve the spent-marker key from
+	// the signed Header so the check can't be bypassed by mutating the
+	// unauthenticated MerkleProof fields on a genuine, previously-applied proof.
+	if cxp.Header != nil {
 		shardID = cxp.Header.ShardID()
 		blockNum = cxp.Header.Number().Uint64()
 	}
@@ -2882,7 +2943,10 @@ func UpdateValidatorVotingPower(
 				currentEpochSuperCommittee.Epoch,
 			)
 		}
-		roster, err := votepower.Compute(subCommittee, newEpochSuperCommittee.Epoch)
+		roster, err := votepower.Compute(
+			subCommittee, newEpochSuperCommittee.Epoch,
+			bc.Config().IsStrictStateValidation(newEpochSuperCommittee.Epoch),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -3217,7 +3281,21 @@ func (bc *BlockChainImpl) prepareStakingMetaData(
 					return nil, nil, err
 				}
 			}
-			delegations = append(delegations, selfIndex)
+			// One entry per validator: the index is looked up by validator
+			// address, so a second entry for the same one is not addressable
+			// and only duplicates work already covered by the first.
+			indexed := false
+			if bc.chainConfig.IsStrictStateValidation(block.Epoch()) {
+				for _, d := range delegations {
+					if d.ValidatorAddress == createValidator.ValidatorAddress {
+						indexed = true
+						break
+					}
+				}
+			}
+			if !indexed {
+				delegations = append(delegations, selfIndex)
+			}
 			newDelegations[createValidator.ValidatorAddress] = delegations
 		case staking.DirectiveEditValidator:
 		case staking.DirectiveDelegate:

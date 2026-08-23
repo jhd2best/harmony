@@ -18,9 +18,9 @@ type Verifier interface {
 
 // NewVerifier creates the quorum verifier for the given committee, epoch and whether the scenario
 // is staking.
-func NewVerifier(committee *shard.Committee, epoch *big.Int, isStaking bool) (Verifier, error) {
+func NewVerifier(committee *shard.Committee, epoch *big.Int, isStaking bool, strictVotePower bool) (Verifier, error) {
 	if isStaking {
-		return newStakeVerifier(committee, epoch)
+		return newStakeVerifier(committee, epoch, strictVotePower)
 	}
 	return newUniformVerifier(committee)
 }
@@ -32,8 +32,8 @@ type stakeVerifier struct {
 }
 
 // newStakeVerifier creates a stake verifier from the given committee
-func newStakeVerifier(committee *shard.Committee, epoch *big.Int) (*stakeVerifier, error) {
-	r, err := votepower.Compute(committee, epoch)
+func newStakeVerifier(committee *shard.Committee, epoch *big.Int, strictVotePower bool) (*stakeVerifier, error) {
+	r, err := votepower.Compute(committee, epoch, strictVotePower)
 	if err != nil {
 		return nil, errors.Wrap(err, "compute staking vote-power")
 	}
@@ -70,15 +70,18 @@ func newUniformVerifier(committee *shard.Committee) (*uniformVerifier, error) {
 	}, nil
 }
 
-// IsQuorumAchievedByMask returns whether the quorum is achieved with the provided mask,
-// which is whether more than (2/3+1) nodes is included in mask.
+// IsQuorumAchievedByMask returns whether the quorum is achieved with the provided mask.
 func (uv *uniformVerifier) IsQuorumAchievedByMask(mask *bls_cosi.Mask) bool {
-	got := int64(len(mask.Publics))
-	exp := uv.thresholdKeyCount()
-	// Theoretically speaking, greater or equal will do the work. But current logic is more strict
-	// without equal, thus conform to current logic implemented.
-	// (engineImpl.VerifySeal, uniformVoteWeight.IsQuorumAchievedByMask)
-	return got > exp
+	if mask == nil {
+		return false
+	}
+	var signerCount int64
+	for i := range mask.Publics {
+		if enabled, err := mask.IndexEnabled(i); err == nil && enabled {
+			signerCount++
+		}
+	}
+	return signerCount >= uv.thresholdKeyCount()
 }
 
 func (uv *uniformVerifier) thresholdKeyCount() int64 {
